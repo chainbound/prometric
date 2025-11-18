@@ -18,50 +18,11 @@ instead of [metrics](https://docs.rs/metrics/latest/metrics), and supports dynam
 
 ### Basic Usage
 
-```rust
-use prometric_derive::metrics;
-use prometric::{Counter, Gauge, Histogram};
-
-// The `scope` attribute is used to set the prefix for the metric names in this struct.
-#[metrics(scope = "app")]
-struct AppMetrics {
-    /// The total number of HTTP requests.
-    #[metric(rename = "http_requests_total", labels = ["method", "path"])]
-    http_requests: Counter,
-
-    // For histograms, the `buckets` attribute is optional. It will default to [prometheus::DEFAULT_BUCKETS] if not provided.
-    // `buckets` can also be an expression that evaluates into a `Vec<f64>`.
-    /// The duration of HTTP requests. 
-    #[metric(labels = ["method", "path"], buckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])]
-    http_requests_duration: Histogram,
-
-    /// This doc comment will be overwritten by the `help` attribute.
-    #[metric(rename = "current_active_users", labels = ["service"], help = "The current number of active users.")]
-    current_users: Gauge,
-
-    /// The balance of the account, in dollars. Uses a floating point number.
-    #[metric(rename = "account_balance", labels = ["account_id"])]
-    account_balance: Gauge<f64>,
-
-    /// The total number of errors.
-    #[metric]
-    errors: Counter,
-}
-
-// Build the metrics struct with static labels, which will initialize and register the metrics with the default registry.
-// A custom registry can be used by passing it to the builder using `with_registry`.
-let metrics = AppMetrics::builder().with_label("host", "localhost").with_label("port", "8080").build();
-
-// Metric fields each get an accessor method generated, which can be used to interact with the metric.
-// The arguments to the accessor method are the labels for the metric.
-metrics.http_requests("GET", "/").inc();
-metrics.http_requests_duration("GET", "/").observe(1.0);
-metrics.current_users("service-1").set(10);
-metrics.account_balance("1234567890").set(-12.2);
-metrics.errors().inc();
-```
+See [`basic_usage`](./prometric-derive/examples/basic_usage.rs) example for usage.
 
 #### Sample Output
+
+TODO: document how to obtain sample output
 
 ```text
 # HELP app_account_balance The balance of the account, in dollars. Uses a floating point number.
@@ -102,47 +63,13 @@ app_http_requests_total{host="localhost",method="POST",path="/",port="8080"} 2
 
 You can also generate a static `LazyLock` instance by using the `static` attribute. When enabled, the builder methods and `Default` implementation are made private, ensuring the only way to access the metrics is through the static instance:
 
-```rust
-use prometric_derive::metrics;
-use prometric::{Counter, Gauge};
-
-#[metrics(scope = "app", static)]
-struct AppMetrics {
-    /// The total number of requests.
-    #[metric(labels = ["method"])]
-    requests: Counter,
-
-    /// The current number of active connections.
-    #[metric]
-    active_connections: Gauge,
-}
-
-// Use the static directly (the name is APP_METRICS in SCREAMING_SNAKE_CASE)
-APP_METRICS.requests("GET").inc();
-APP_METRICS.active_connections().set(10);
-
-// The following would not compile:
-// let metrics = AppMetrics::builder();  // Error: builder() is private
-// let metrics = AppMetrics::default();   // Error: Default is not implemented
-```
+See [`static_metrics`](./prometric-derive/examples/static_metrics.rs) example for usage.
 
 ### Exporting Metrics
 
-An HTTP exporter is provided by [`prometric::exporter::ExporterBuilder`]. Usage:
+An HTTP exporter is provided by [`prometric::exporter::ExporterBuilder`].
 
-```rust
-use prometric::exporter::ExporterBuilder;
-
-ExporterBuilder::new()
-    // Specify the address to listen on
-    .with_address("127.0.0.1:9090")
-    // Set the global namespace for the metrics (usually the name of the application)
-    .with_namespace("exporter")
-    // Install the exporter. This will start an HTTP server and serve metrics on the specified
-    // address.
-    .install()
-    .expect("Failed to install exporter");
-```
+See [`exporter`](./prometric-derive/examples/exporter.rs) example for usage.
 
 ### Process Metrics
 
