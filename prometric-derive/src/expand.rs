@@ -181,33 +181,40 @@ impl MetricBuilder {
             ));
         }
 
-        let help = metric_field
-            .help
-            .or_else(|| {
-                field
-                    .attrs
-                    .iter()
-                    .find(|attr| attr.path().is_ident("doc"))
-                    .map(|attr| {
-                        let syn::Meta::NameValue(value) = &attr.meta else {
-                            return Err(syn::Error::new_spanned(attr, "Expected a doc attribute"));
-                        };
+        // prometheus::Opts requires a non-empty help string
+        // Here we retrieve it from the `help` argument of the `metric`,
+        // falling back to the documentation of the field otherwise
+        let help = metric_field.help.or_else(|| {
+            field
+                .attrs
+                .iter()
+                .find(|attr| attr.path().is_ident("doc"))
+                .map(|attr| {
+                    let syn::Meta::NameValue(value) = &attr.meta else {
+                        return Err(syn::Error::new_spanned(attr, "Expected a doc attribute"));
+                    };
 
-                        if let syn::Expr::Lit(lit) = &value.value {
-                            if let syn::Lit::Str(lit) = &lit.lit {
-                                Ok(lit.value().trim().to_string())
-                            } else {
-                                Err(syn::Error::new_spanned(attr, "Expected a string literal"))
-                            }
+                    if let syn::Expr::Lit(lit) = &value.value {
+                        if let syn::Lit::Str(lit) = &lit.lit {
+                            Ok(lit.value().trim().to_string())
                         } else {
                             Err(syn::Error::new_spanned(attr, "Expected a string literal"))
                         }
-                    })
-                    .transpose()
-                    .ok()
-                    .flatten()
-            })
-            .unwrap_or_default();
+                    } else {
+                        Err(syn::Error::new_spanned(attr, "Expected a string literal"))
+                    }
+                })
+                .transpose()
+                .ok()
+                .flatten()
+        });
+
+        let Some(help) = help else {
+            return Err(syn::Error::new_spanned(
+                field,
+                "Unable to determine `help` label for metric. Provide an explicit `help` argument to `metric` or document the field",
+            ));
+        };
 
         let metric_name = metric_field
             .rename

@@ -3,9 +3,11 @@ use prometric_derive::metrics;
 
 #[metrics(scope = "example")]
 struct ExampleMetrics {
+    /// A simple counter
     #[metric]
     counter: Counter,
 
+    /// A simple gauge
     #[metric]
     gauge: Gauge,
 }
