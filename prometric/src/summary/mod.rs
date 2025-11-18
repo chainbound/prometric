@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use prometheus::core::MetricVec;
 
 mod core;
-use core::{DefaultSummaryProvider, SummaryProvider, SummaryVecBuilder};
+use core::{SummaryProvider, SummaryVecBuilder};
 
-pub use core::SummaryOpts;
+pub use core::{DEFAULT_QUANTILES, DefaultSummaryProvider, SummaryOpts};
 
 type SummaryVec<S = DefaultSummaryProvider> = MetricVec<SummaryVecBuilder<S>>;
 

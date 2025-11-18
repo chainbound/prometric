@@ -169,7 +169,7 @@ pub struct SummaryVecBuilder<S = DefaultSummaryProvider> {
 
 impl<S> Clone for SummaryVecBuilder<S> {
     fn clone(&self) -> Self {
-        Self { _p: self._p.clone() }
+        Self { _p: self._p }
     }
 }
 
