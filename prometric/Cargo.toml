@@ -21,9 +21,14 @@ tokio = { version = "1.40.0", optional = true, features = ["net", "rt"] }
 # Process
 sysinfo = { version = "0.37.2", optional = true }
 
+# Summary
+metrics-util = { version = "0.20.0", optional = true }
+
 [features]
-default = ["exporter"]
+default = ["exporter", "summary"]
 # Expose HTTP exporter functionality with the `hyper` crate. Enabled by default.
 exporter = ["dep:hyper", "dep:hyper-util", "dep:tokio"]
 # Expose process metrics collection functionality with the `sysinfo` crate.
 process = ["dep:sysinfo"]
+# Expose a Summary functionality with the `metrics-util` crate.
+summary = ["dep:metrics-util"]

@@ -21,6 +21,11 @@ pub use gauge::*;
 pub mod histogram;
 pub use histogram::*;
 
+#[cfg(feature = "summary")]
+pub mod summary;
+#[cfg(feature = "summary")]
+pub use summary::*;
+
 /// Sealed trait to prevent outside code from implementing the metric types.
 mod private {
     pub trait Sealed {}
