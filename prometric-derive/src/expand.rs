@@ -29,6 +29,7 @@ enum MetricType {
     Counter(Ident, Type),
     Gauge(Ident, Type),
     Histogram(Ident),
+    Summary(Ident, Type),
 }
 
 impl std::fmt::Display for MetricType {
@@ -37,6 +38,7 @@ impl std::fmt::Display for MetricType {
             Self::Counter(_, _) => write!(f, "Counter"),
             Self::Gauge(_, _) => write!(f, "Gauge"),
             Self::Histogram(_) => write!(f, "Histogram"),
+            Self::Summary(_, _) => write!(f, "Summary"),
         }
     }
 }
@@ -83,6 +85,13 @@ impl MetricType {
                 Ok(Self::Gauge(ident.clone(), generic))
             }
             "Histogram" => Ok(Self::Histogram(ident.clone())),
+            "Summary" => {
+                // NOTE: Use the prometric type alias here so it remains consistent.
+                let generic = maybe_generic.unwrap_or(
+                    syn::parse_str("::prometric::summary::DefaultSummaryProvider").unwrap(),
+                );
+                Ok(Self::Summary(ident.clone(), generic))
+            }
             other => Err(syn::Error::new_spanned(
                 ident,
                 format!("Unsupported metric type '{other}'. Use Counter, Gauge, or Histogram"),
@@ -95,6 +104,52 @@ impl MetricType {
             Self::Counter(ident, ty) => quote! { #ident<#ty> },
             Self::Gauge(ident, ty) => quote! { #ident<#ty> },
             Self::Histogram(ident) => quote! { #ident },
+            Self::Summary(ident, ty) => quote! { #ident<#ty> },
+        }
+    }
+
+    fn partitions_for(
+        &self,
+        maybe_buckets: Option<syn::Expr>,
+        maybe_quantiles: Option<syn::Expr>,
+    ) -> Partitions {
+        match self {
+            MetricType::Counter(_, _) | MetricType::Gauge(_, _) => Partitions::NotApplicable,
+            MetricType::Histogram(_) => {
+                maybe_buckets.map(Partitions::Buckets).unwrap_or(Partitions::None)
+            }
+            MetricType::Summary(_, _) => {
+                maybe_quantiles.map(Partitions::Quantiles).unwrap_or(Partitions::None)
+            }
+        }
+    }
+}
+
+enum Partitions {
+    /// No partitions specified
+    None,
+    /// Partitions not applicable to given metric type
+    ///
+    /// Examples: Gauge, Counter
+    NotApplicable,
+    /// Buckets of a histogram
+    Buckets(syn::Expr),
+    /// Quantiles of a summary
+    Quantiles(syn::Expr),
+}
+
+impl Partitions {
+    fn buckets(&self) -> Option<&syn::Expr> {
+        match self {
+            Self::Buckets(buckets) => Some(buckets),
+            _ => None,
+        }
+    }
+
+    fn quantiles(&self) -> Option<&syn::Expr> {
+        match self {
+            Self::Quantiles(quantiles) => Some(quantiles),
+            _ => None,
         }
     }
 }
@@ -107,18 +162,24 @@ struct MetricBuilder {
     ty: MetricType,
     /// The label keys to define for the metric.
     labels: Option<Vec<String>>,
-    /// The buckets to use for the histogram.
-    buckets: Option<syn::Expr>,
     /// The full name of the metric.
     /// = scope + separator + identifier || rename.
     full_name: String,
     /// The doc string of the metric.
     help: String,
+    /// The buckets of a histogram or the quantiles of a summary.
+    partitions: Partitions,
 }
 
 impl MetricBuilder {
     fn try_from(field: &Field, scope: &str) -> Result<Self> {
         let metric_field = MetricField::from_field(field)?;
+        if metric_field.buckets.is_some() && metric_field.quantiles.is_some() {
+            return Err(syn::Error::new_spanned(
+                field,
+                "The attributes `buckets` and `quantiles` are mutually exclusive",
+            ));
+        }
 
         let help = metric_field
             .help
@@ -164,6 +225,8 @@ impl MetricBuilder {
 
         let ty = MetricType::from_segment(last_segment)?;
 
+        let partitions = ty.partitions_for(metric_field.buckets, metric_field.quantiles);
+
         Ok(Self {
             identifier: metric_field
                 .ident
@@ -172,7 +235,7 @@ impl MetricBuilder {
             labels: metric_field
                 .labels
                 .map(|labels| labels.iter().map(|label| label.value()).collect()),
-            buckets: metric_field.buckets,
+            partitions,
             full_name,
             help,
         })
@@ -189,21 +252,33 @@ impl MetricBuilder {
         let ty = self.ty.full_type();
         let name = &self.full_name;
         let labels = self.labels();
-        let buckets = &self.buckets;
+        let partitions = &self.partitions;
 
-        if let MetricType::Histogram(_) = &self.ty {
-            let buckets = if let Some(buckets_expr) = buckets {
-                quote! { Some(#buckets_expr) }
-            } else {
-                quote! { None }
-            };
-
-            quote! {
-                #ident: <#ty>::new(self.registry, #name, #help, &[#(#labels),*], self.labels.clone(), #buckets)
-            }
-        } else {
-            quote! {
+        match self.ty {
+            MetricType::Counter(_, _) | MetricType::Gauge(_, _) => quote! {
                 #ident: <#ty>::new(self.registry, #name, #help, &[#(#labels),*], self.labels.clone())
+            },
+            MetricType::Histogram(_) => {
+                let buckets = if let Some(buckets_expr) = partitions.buckets() {
+                    quote! { Some(#buckets_expr) }
+                } else {
+                    quote! { None }
+                };
+
+                quote! {
+                    #ident: <#ty>::new(self.registry, #name, #help, &[#(#labels),*], self.labels.clone(), #buckets)
+                }
+            }
+            MetricType::Summary(_, _) => {
+                let quantiles = if let Some(quantiles_expr) = partitions.quantiles() {
+                    quote! { Some(#quantiles_expr) }
+                } else {
+                    quote! { None }
+                };
+
+                quote! {
+                    #ident: <#ty>::new(self.registry, #name, #help, &[#(#labels),*], self.labels.clone(), #quantiles)
+                }
             }
         }
     }
@@ -220,11 +295,21 @@ impl MetricBuilder {
             doc_builder.push_str(&format!("\n* Labels: {}\n", labels.join(", ")));
         }
 
-        if let MetricType::Histogram(_) = &self.ty {
-            if let Some(buckets_expr) = &self.buckets {
-                doc_builder.push_str(&format!("\n* Buckets: {}", quote! { #buckets_expr }));
-            } else {
-                doc_builder.push_str("\n* Buckets: [prometheus::DEFAULT_BUCKETS]");
+        match self.ty {
+            MetricType::Counter(_, _) | MetricType::Gauge(_, _) => {}
+            MetricType::Histogram(_) => {
+                if let Some(buckets_expr) = self.partitions.buckets() {
+                    doc_builder.push_str(&format!("\n* Buckets: {}", quote! { #buckets_expr }));
+                } else {
+                    doc_builder.push_str("\n* Buckets: [prometheus::DEFAULT_BUCKETS]");
+                }
+            }
+            MetricType::Summary(_, _) => {
+                if let Some(buckets_expr) = self.partitions.quantiles() {
+                    doc_builder.push_str(&format!("\n* Quantiles: {}", quote! { #buckets_expr }));
+                } else {
+                    doc_builder.push_str("\n* Buckets: [::prometric::summary::DEFAULT_QUANTILES]");
+                }
             }
         }
 
@@ -357,6 +442,15 @@ impl MetricBuilder {
                     self.inner.observe(labels, value.into_atomic());
                 }
             },
+            MetricType::Summary(_, _) => quote! {
+                #vis fn observe<V>(&self, value: V)
+                where
+                    V: ::prometric::IntoAtomic<f64>,
+                {
+                    #labels_array
+                    self.inner.observe(labels, value.into_atomic());
+                }
+            },
         };
 
         quote! {
@@ -381,11 +475,17 @@ struct MetricField {
     labels: Option<Vec<LitStr>>,
     /// The help string to use for the metric. Takes precedence over the doc attribute.
     help: Option<String>,
-    /// The buckets to use for the histogram.
-    buckets: Option<syn::Expr>,
     /// The sample rate to use for the histogram.
     /// TODO: Implement this.
     sample: Option<LitFloat>,
+    /// The buckets to use for the histogram.
+    ///
+    /// Mutually exclusive with `quantiles`
+    buckets: Option<syn::Expr>,
+    /// The quantiles to use for the summary.
+    ///
+    /// Mutually exclusive with `buckets`
+    quantiles: Option<syn::Expr>,
 }
 
 pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<TokenStream> {
