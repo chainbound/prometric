@@ -8,8 +8,9 @@ struct AppMetrics {
     #[metric(rename = "http_requests_total", labels = ["method", "path"])]
     http_requests: Counter,
 
-    // For histograms, the `buckets` attribute is optional. It will default to [prometheus::DEFAULT_BUCKETS] if not provided.
-    // `buckets` can also be an expression that evaluates into a `Vec<f64>`.
+    // For histograms, the `buckets` attribute is optional. It will default to
+    // [prometheus::DEFAULT_BUCKETS] if not provided. `buckets` can also be an expression that
+    // evaluates into a `Vec<f64>`.
     /// The duration of HTTP requests.
     #[metric(labels = ["method", "path"], buckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])]
     http_requests_duration: Histogram,
@@ -33,13 +34,14 @@ struct AppMetrics {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    // Build the metrics struct with static labels, which will initialize and register the metrics with the default registry.
-    // A custom registry can be used by passing it to the builder using `with_registry`.
+    // Build the metrics struct with static labels, which will initialize and register the metrics
+    // with the default registry. A custom registry can be used by passing it to the builder
+    // using `with_registry`.
     let metrics =
         AppMetrics::builder().with_label("host", "localhost").with_label("port", "8080").build();
 
-    // Metric fields each get an accessor method generated, which can be used to interact with the metric.
-    // The arguments to the accessor method are the labels for the metric.
+    // Metric fields each get an accessor method generated, which can be used to interact with the
+    // metric. The arguments to the accessor method are the labels for the metric.
     metrics.http_requests("GET", "/").inc();
     metrics.http_requests_duration("GET", "/").observe(1.0);
     metrics.http_request_sizes("GET", "/").observe(12345);
