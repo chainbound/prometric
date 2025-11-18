@@ -75,13 +75,13 @@ impl MetricType {
             "Counter" => {
                 // NOTE: Use the prometric type alias here so it remains consistent.
                 let generic =
-                    maybe_generic.unwrap_or(syn::parse_str("prometric::CounterDefault").unwrap());
+                    maybe_generic.unwrap_or(syn::parse_str("::prometric::CounterDefault").unwrap());
                 Ok(Self::Counter(ident.clone(), generic))
             }
             "Gauge" => {
                 // NOTE: Use the prometric type alias here so it remains consistent.
                 let generic =
-                    maybe_generic.unwrap_or(syn::parse_str("prometric::GaugeDefault").unwrap());
+                    maybe_generic.unwrap_or(syn::parse_str("::prometric::GaugeDefault").unwrap());
                 Ok(Self::Gauge(ident.clone(), generic))
             }
             "Histogram" => Ok(Self::Histogram(ident.clone())),
@@ -287,7 +287,7 @@ impl MetricBuilder {
         let help = &self.help;
         let mut doc_builder = format!(
             "{help}\n\
-            * Metric type: [prometric::{}]",
+            * Metric type: [::prometric::{}]",
             self.ty,
         );
 
@@ -301,7 +301,7 @@ impl MetricBuilder {
                 if let Some(buckets_expr) = self.partitions.buckets() {
                     doc_builder.push_str(&format!("\n* Buckets: {}", quote! { #buckets_expr }));
                 } else {
-                    doc_builder.push_str("\n* Buckets: [prometheus::DEFAULT_BUCKETS]");
+                    doc_builder.push_str("\n* Buckets: [::prometheus::DEFAULT_BUCKETS]");
                 }
             }
             MetricType::Summary(_, _) => {
@@ -387,7 +387,7 @@ impl MetricBuilder {
 
                 #vis fn inc_by<V>(&self, value: V)
                 where
-                    V: prometric::IntoAtomic<#counter_ty>,
+                    V: ::prometric::IntoAtomic<#counter_ty>,
                 {
                     #labels_array
                     self.inner.inc_by(labels, value.into_atomic());
@@ -411,7 +411,7 @@ impl MetricBuilder {
 
                 #vis fn add<V>(&self, value: V)
                 where
-                    V: prometric::IntoAtomic<#gauge_ty>,
+                    V: ::prometric::IntoAtomic<#gauge_ty>,
                 {
                     #labels_array
                     self.inner.add(labels, value.into_atomic());
@@ -419,7 +419,7 @@ impl MetricBuilder {
 
                 #vis fn sub<V>(&self, value: V)
                 where
-                    V: prometric::IntoAtomic<#gauge_ty>,
+                    V: ::prometric::IntoAtomic<#gauge_ty>,
                 {
                     #labels_array
                     self.inner.sub(labels, value.into_atomic());
@@ -427,7 +427,7 @@ impl MetricBuilder {
 
                 #vis fn set<V>(&self, value: V)
                 where
-                    V: prometric::IntoAtomic<#gauge_ty>,
+                    V: ::prometric::IntoAtomic<#gauge_ty>,
                 {
                     #labels_array
                     self.inner.set(labels, value.into_atomic());
@@ -436,7 +436,7 @@ impl MetricBuilder {
             MetricType::Histogram(_) => quote! {
                 #vis fn observe<V>(&self, value: V)
                 where
-                    V: prometric::IntoAtomic<f64>,
+                    V: ::prometric::IntoAtomic<f64>,
                 {
                     #labels_array
                     self.inner.observe(labels, value.into_atomic());
@@ -517,8 +517,8 @@ pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<Token
 
     let mut output = quote! {
         #vis struct #builder_name<'a> {
-            registry: &'a prometheus::Registry,
-            labels: std::collections::HashMap<String, String>,
+            registry: &'a ::prometheus::Registry,
+            labels: ::std::collections::HashMap<String, String>,
         }
 
         impl<'a> #builder_name<'a> {
@@ -550,7 +550,7 @@ pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<Token
         Some(quote! {
             /// A static instance of the metrics, initialized with default values.
             /// This static is generated when `static` is enabled on the `#[metrics]` attribute.
-            #vis static #static_name: std::sync::LazyLock<#ident> = std::sync::LazyLock::new(|| #ident::builder().build());
+            #vis static #static_name: ::std::sync::LazyLock<#ident> = ::std::sync::LazyLock::new(|| #ident::builder().build());
         })
     } else {
         None
@@ -590,8 +590,8 @@ pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<Token
             /// It will be initialized with the default registry and no labels.
             #builder_vis fn builder<'a>() -> #builder_name<'a> {
                 #builder_name {
-                    registry: prometheus::default_registry(),
-                    labels: std::collections::HashMap::new(),
+                    registry: ::prometheus::default_registry(),
+                    labels: ::std::collections::HashMap::new(),
                 }
             }
 
