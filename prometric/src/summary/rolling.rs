@@ -14,6 +14,7 @@ pub const DEFAULT_SUMMARY_BUCKET_DURATION: Duration = Duration::from_secs(20);
 // the match is a const-hack to unwrap
 pub const DEFAULT_SUMMARY_BUCKET_COUNT: NonZeroU32 = match NonZeroU32::new(3) {
     Some(v) => v,
+    #[allow(clippy::out_of_bounds_indexing)]
     None => [][0],
 };
 
@@ -55,7 +56,7 @@ impl SummaryProvider for RollingSummary {
     fn new(opts: &Self::Opts) -> Self {
         let distribution = metrics_exporter_prometheus::DistributionBuilder::new(
             opts.quantiles.clone(),
-            Some(opts.duration.clone()),
+            Some(opts.duration),
             None,
             Some(opts.max_buckets_count),
             None,
