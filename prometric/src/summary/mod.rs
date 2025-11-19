@@ -2,10 +2,17 @@ use std::collections::HashMap;
 
 use prometheus::core::MetricVec;
 
-mod core;
-use core::{SummaryProvider, SummaryVecBuilder};
+pub mod traits;
+use traits::SummaryProvider;
 
-pub use core::{DEFAULT_QUANTILES, DefaultSummaryProvider, SummaryOpts};
+mod generic;
+
+pub mod rolling;
+pub mod simple;
+
+pub use generic::{DEFAULT_QUANTILES, SummaryOpts, SummaryVecBuilder};
+
+pub type DefaultSummaryProvider = rolling::RollingSummary;
 
 type SummaryVec<S = DefaultSummaryProvider> = MetricVec<SummaryVecBuilder<S>>;
 
@@ -16,7 +23,7 @@ pub struct Summary<S: SummaryProvider + Send + Sync + Clone = DefaultSummaryProv
 }
 
 impl<S: SummaryProvider + Clone + Send + Sync> Summary<S> {
-    // Unlike other items like `HistogramVec`, this can't exist on `MetricVec` directly
+    // NOTE: Unlike other items like `HistogramVec`, this can't exist on `MetricVec` directly
     // as we are not allowed to have inherent impls on foreign types
     fn new_summary_vec(
         opts: SummaryOpts<S::Opts>,
@@ -43,8 +50,14 @@ impl Summary<DefaultSummaryProvider> {
         const_labels: HashMap<String, String>,
         quantiles: Option<B>,
     ) -> Self {
-        let quantiles = quantiles.map(Into::into).unwrap_or(core::DEFAULT_QUANTILES.to_vec());
-        let opts = SummaryOpts::new(name, help, ()).const_labels(const_labels).quantiles(quantiles);
+        let quantiles = quantiles.map(Into::into).unwrap_or(generic::DEFAULT_QUANTILES.to_vec());
+        let opts = SummaryOpts::new(
+            name,
+            help,
+            rolling::RollingSummaryOpts::default().with_quantiles(&quantiles),
+        )
+        .const_labels(const_labels)
+        .quantiles(quantiles);
         let metric = Self::new_summary_vec(opts, labels).unwrap();
 
         let boxed = Box::new(metric.clone());
