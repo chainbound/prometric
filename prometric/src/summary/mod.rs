@@ -47,15 +47,15 @@ impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
 }
 
 impl Summary<DefaultSummaryProvider> {
-    pub fn new<B: Into<Vec<f64>>>(
+    pub fn new(
         registry: &prometheus::Registry,
         name: &str,
         help: &str,
         labels: &[&str],
         const_labels: HashMap<String, String>,
-        quantiles: Option<B>,
+        quantiles: Option<Vec<f64>>,
     ) -> Self {
-        let quantiles = quantiles.map(Into::into).unwrap_or(generic::DEFAULT_QUANTILES.to_vec());
+        let quantiles = quantiles.unwrap_or(generic::DEFAULT_QUANTILES.to_vec());
 
         let opts = RollingSummaryOpts::default().with_quantiles(&quantiles);
         let opts = BatchOps::from_inner(opts);

@@ -281,7 +281,7 @@ impl MetricBuilder {
             },
             MetricType::Histogram(_) => {
                 let buckets = if let Some(buckets_expr) = partitions.buckets() {
-                    quote! { Some(#buckets_expr) }
+                    quote! { Some(#buckets_expr.into()) }
                 } else {
                     quote! { None }
                 };
@@ -292,7 +292,7 @@ impl MetricBuilder {
             }
             MetricType::Summary(_, _) => {
                 let quantiles = if let Some(quantiles_expr) = partitions.quantiles() {
-                    quote! { Some(#quantiles_expr) }
+                    quote! { Some(#quantiles_expr.into()) }
                 } else {
                     quote! { None }
                 };

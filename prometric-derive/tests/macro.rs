@@ -193,3 +193,28 @@ fn bucket_expressions_work() {
 
     assert!(output.contains("test_hist"));
 }
+
+#[test]
+fn bucket_defaults_work() {
+    #[prometric_derive::metrics(scope = "test")]
+    struct BucketMetrics {
+        /// Test histogram metric with bucket expression.
+        #[metric]
+        hist: prometric::Histogram,
+    }
+
+    let registry = prometheus::default_registry();
+    let app_metrics = BucketMetrics::builder().with_registry(registry).build();
+
+    let duration = Duration::from_secs(1);
+    app_metrics.hist().observe(duration.as_secs_f64());
+
+    let encoder = prometheus::TextEncoder::new();
+    let metric_families = registry.gather(); // Wait, need to expose registry
+
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    let output = String::from_utf8(buffer).unwrap();
+
+    assert!(output.contains("test_hist"));
+}

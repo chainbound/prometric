@@ -153,11 +153,13 @@ mod utils;
 /// the current process.
 ///
 /// ```rust
+/// # #[cfg(feature = "process")] {
 /// use prometric::process::ProcessCollector;
 /// use prometric_derive::metrics;
 ///
 /// let mut collector = ProcessCollector::default();
 /// collector.collect();
+/// # }
 /// ```
 ///
 /// #### Output
