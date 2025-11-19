@@ -193,7 +193,7 @@ impl MetricBuilder {
 
         if let MetricType::Histogram(_) = &self.ty {
             let buckets = if let Some(buckets_expr) = buckets {
-                quote! { Some(#buckets_expr) }
+                quote! { Some(#buckets_expr.into()) }
             } else {
                 quote! { None }
             };
