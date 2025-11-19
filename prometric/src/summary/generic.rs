@@ -1,3 +1,5 @@
+//! Enables a [`Summary`] to be represented as a prometheus Summary metric
+
 use std::{collections::HashMap, marker::PhantomData};
 
 use prometheus::{
@@ -6,7 +8,7 @@ use prometheus::{
     proto as pp,
 };
 
-use crate::summary::traits::{Summary, SummaryProvider};
+use crate::summary::traits::{ConcurrentSummaryProvider, Summary, SummaryMetric, SummaryProvider};
 
 // from metrics_exporter_prometheus::PrometheusBuilder::new
 pub const DEFAULT_QUANTILES: &[f64] = &[0.0, 0.5, 0.9, 0.95, 0.99, 0.999, 1.0];
@@ -64,9 +66,9 @@ impl<O> SummaryOpts<O> {
 pub struct GenericSummary<P> {
     label_pairs: Vec<pp::LabelPair>,
 
-    // FIXME: Batch & Lock
     provider: P,
 
+    /// The configured quantiles
     quantiles: Vec<f64>,
 }
 
@@ -86,12 +88,11 @@ impl<P: SummaryProvider> GenericSummary<P> {
     }
 
     /// Record a given observation in the summary.
-    pub fn observe(&self, v: f64) {
-        // FIXME: batch observations and introduce a lock
-        todo!("provider requires &mut")
+    pub fn observe(&mut self, v: f64) {
+        self.provider.observe(v);
     }
 
-    /// Make a snapshot of the current sumarry state exposed as a Protobuf struct
+    /// Make a snapshot of the current summary state exposed as a Protobuf struct
     pub fn proto(&self) -> pp::Summary {
         let snapshot = self.provider.snapshot();
         let mut summary = pp::Summary::default();
@@ -104,8 +105,10 @@ impl<P: SummaryProvider> GenericSummary<P> {
             let mut q = pp::Quantile::default();
             q.set_quantile(quantile);
 
+            // TODO: signal that this value was not computable if == None
             let Some(val) = snapshot.quantile(quantile) else { continue };
             q.set_value(val);
+
             quantiles.push(q);
         }
 
@@ -115,7 +118,14 @@ impl<P: SummaryProvider> GenericSummary<P> {
     }
 }
 
-impl<S: SummaryProvider + Send + Sync + Clone> Metric for GenericSummary<S> {
+impl<P: ConcurrentSummaryProvider> GenericSummary<P> {
+    /// Record a given observation in the summary.
+    pub fn concurrent_observe(&self, v: f64) {
+        self.provider.concurrent_observe(v);
+    }
+}
+
+impl<S: SummaryMetric> Metric for GenericSummary<S> {
     fn metric(&self) -> pp::Metric {
         let mut m = pp::Metric::from_label(self.label_pairs.clone());
         m.set_summary(self.proto());
@@ -140,7 +150,7 @@ impl<P> SummaryVecBuilder<P> {
     }
 }
 
-impl<S: SummaryProvider + Send + Sync + Clone> MetricVecBuilder for SummaryVecBuilder<S> {
+impl<S: SummaryMetric> MetricVecBuilder for SummaryVecBuilder<S> {
     type M = GenericSummary<S>;
     type P = SummaryOpts<S::Opts>;
 

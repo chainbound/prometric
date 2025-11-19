@@ -1,3 +1,7 @@
+//! Rolling Summary implementation
+//!
+//! Uses [`metrics_exporter_prometheus::Distribution`] for the underlying representation
+
 use std::{num::NonZeroU32, time::Duration};
 
 use metrics_util::Quantile;
@@ -15,11 +19,14 @@ pub const DEFAULT_SUMMARY_BUCKET_COUNT: NonZeroU32 = match NonZeroU32::new(3) {
 
 pub type RollingSummary = metrics_exporter_prometheus::Distribution;
 
+/// Configuration for the Summary
+///
+/// See [`RollingSummary::new`] for documentation on the various options
 #[derive(Clone)]
 pub struct RollingSummaryOpts {
-    quantiles: Vec<Quantile>,
-    duration: Duration,
-    max_buckets_count: NonZeroU32,
+    pub quantiles: Vec<Quantile>,
+    pub duration: Duration,
+    pub max_buckets_count: NonZeroU32,
 }
 
 impl RollingSummaryOpts {
@@ -64,6 +71,7 @@ impl SummaryProvider for RollingSummary {
     }
 
     fn observe(&mut self, sample: f64) {
+        // TODO: Determine if we want to also receive the measurement instant
         let now = Instant::now();
         self.record_samples(&[(sample, now)]);
     }

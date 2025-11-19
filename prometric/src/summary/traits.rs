@@ -1,3 +1,15 @@
+/// Abstracts over the representation of the Summary data
+pub trait Summary {
+    /// Computes the sum of all the samples in the summary
+    fn sample_sum(&self) -> f64;
+
+    /// Returns the number of samples in the summary
+    fn sample_count(&self) -> u64;
+
+    /// Attempt to compute the value for the given quantile
+    fn quantile(&self, _: f64) -> Option<f64>;
+}
+
 /// Abstracts over the metric summary logic user to compute the given quantile results
 pub trait SummaryProvider {
     type Opts: Clone + Send + Sync;
@@ -13,14 +25,13 @@ pub trait SummaryProvider {
     fn snapshot(&self) -> Self::Summary;
 }
 
-/// Abstracts over the representation of the Summary data
-pub trait Summary {
-    /// Computes the sum of all the samples in the summary
-    fn sample_sum(&self) -> f64;
-
-    /// Returns the number of samples in the summary
-    fn sample_count(&self) -> u64;
-
-    /// Attempt to compute the value for the given quantile
-    fn quantile(&self, _: f64) -> Option<f64>;
+/// Same as [`SummaryProvider`] with the ability to observe a data point concurrently
+pub trait ConcurrentSummaryProvider: SummaryProvider {
+    /// Add a new data point to the summary's collection in a concurrent manner
+    fn concurrent_observe(&self, _: f64);
 }
+
+/// Marker trait (or alias) for a [`Summary`] which can be used by [`crate::summary::generic::GenericSummary`]
+/// to implement [`prometheus::Metric`]
+pub trait SummaryMetric: SummaryProvider + Send + Sync + Clone {}
+impl<T: SummaryProvider + Send + Sync + Clone> SummaryMetric for T {}

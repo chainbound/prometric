@@ -3,26 +3,31 @@ use std::collections::HashMap;
 use prometheus::core::MetricVec;
 
 pub mod traits;
-use traits::SummaryProvider;
+use traits::{ConcurrentSummaryProvider, SummaryMetric};
 
 mod generic;
 
-pub mod rolling;
 pub mod simple;
+
+pub mod rolling;
+use rolling::{RollingSummary, RollingSummaryOpts};
+
+pub mod batching;
+use batching::{BatchOps, BatchedSummary};
 
 pub use generic::{DEFAULT_QUANTILES, SummaryOpts, SummaryVecBuilder};
 
-pub type DefaultSummaryProvider = rolling::RollingSummary;
+pub type DefaultSummaryProvider = BatchedSummary<RollingSummary>;
 
 type SummaryVec<S = DefaultSummaryProvider> = MetricVec<SummaryVecBuilder<S>>;
 
-/// A summary metric.
+/// A Summary metric.
 #[derive(Clone, Debug)]
-pub struct Summary<S: SummaryProvider + Send + Sync + Clone = DefaultSummaryProvider> {
+pub struct Summary<S: ConcurrentSummaryProvider + SummaryMetric = DefaultSummaryProvider> {
     inner: SummaryVec<S>,
 }
 
-impl<S: SummaryProvider + Clone + Send + Sync> Summary<S> {
+impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
     // NOTE: Unlike other items like `HistogramVec`, this can't exist on `MetricVec` directly
     // as we are not allowed to have inherent impls on foreign types
     fn new_summary_vec(
@@ -51,13 +56,12 @@ impl Summary<DefaultSummaryProvider> {
         quantiles: Option<B>,
     ) -> Self {
         let quantiles = quantiles.map(Into::into).unwrap_or(generic::DEFAULT_QUANTILES.to_vec());
-        let opts = SummaryOpts::new(
-            name,
-            help,
-            rolling::RollingSummaryOpts::default().with_quantiles(&quantiles),
-        )
-        .const_labels(const_labels)
-        .quantiles(quantiles);
+
+        let opts = RollingSummaryOpts::default().with_quantiles(&quantiles);
+        let opts = BatchOps::from_inner(opts);
+        let opts =
+            SummaryOpts::new(name, help, opts).const_labels(const_labels).quantiles(quantiles);
+
         let metric = Self::new_summary_vec(opts, labels).unwrap();
 
         let boxed = Box::new(metric.clone());
@@ -79,8 +83,10 @@ impl Summary<DefaultSummaryProvider> {
 
         Self { inner: metric }
     }
+}
 
+impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
     pub fn observe(&self, labels: &[&str], value: f64) {
-        self.inner.with_label_values(labels).observe(value);
+        self.inner.with_label_values(labels).concurrent_observe(value);
     }
 }
