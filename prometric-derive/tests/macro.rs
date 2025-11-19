@@ -199,7 +199,7 @@ fn bucket_defaults_work() {
     #[prometric_derive::metrics(scope = "test")]
     struct BucketMetrics {
         /// Test histogram metric with bucket expression.
-        #[metric()]
+        #[metric]
         hist: prometric::Histogram,
     }
 
