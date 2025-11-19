@@ -2,8 +2,8 @@ use darling::{FromField, FromMeta};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    Field, GenericArgument, Ident, ItemStruct, LitFloat, LitStr, PathArguments, PathSegment,
-    Result, Type,
+    Field, GenericArgument, Ident, ItemStruct, LitFloat, LitStr, PathArguments, Result, Type,
+    TypePath,
 };
 
 use crate::utils::{snake_to_pascal, to_screaming_snake};
@@ -26,10 +26,10 @@ pub(super) struct MetricsAttr {
 }
 
 enum MetricType {
-    Counter(Ident, Type),
-    Gauge(Ident, Type),
-    Histogram(Ident),
-    Summary(Ident, Type),
+    Counter(TypePath, Type),
+    Gauge(TypePath, Type),
+    Histogram(TypePath),
+    Summary(TypePath),
 }
 
 impl std::fmt::Display for MetricType {
@@ -38,23 +38,24 @@ impl std::fmt::Display for MetricType {
             Self::Counter(_, _) => write!(f, "Counter"),
             Self::Gauge(_, _) => write!(f, "Gauge"),
             Self::Histogram(_) => write!(f, "Histogram"),
-            Self::Summary(_, _) => write!(f, "Summary"),
+            Self::Summary(_) => write!(f, "Summary"),
         }
     }
 }
 
 impl MetricType {
     /// Parse the metric type (and generic argument) from a path segment.
-    fn from_segment(segment: &PathSegment) -> Result<Self> {
-        let ident = segment.ident.clone();
+    fn from_path(mut path: TypePath) -> Result<Self> {
+        let last_segment = path.path.segments.last_mut().unwrap();
+        let ident = last_segment.ident.clone();
 
         // Parse the potential generic argument.
-        let maybe_generic = match &segment.arguments {
+        let maybe_generic = match &last_segment.arguments {
             PathArguments::None => None,
             PathArguments::AngleBracketed(generic) => {
                 if generic.args.len() != 1 {
                     return Err(syn::Error::new_spanned(
-                        segment,
+                        last_segment,
                         "Expected a single generic argument",
                     ));
                 }
@@ -67,31 +68,39 @@ impl MetricType {
                 }
             }
             PathArguments::Parenthesized(_) => {
-                return Err(syn::Error::new_spanned(segment, "Expected a generic type argument"));
+                return Err(syn::Error::new_spanned(
+                    last_segment,
+                    "Expected a generic type argument",
+                ));
             }
+        };
+
+        // Specifically override the generic argument of `dest`
+        // This effectively replaces the same type extracted in the `maybe_generic` block
+        // NOTE: Used in the match block below to enforce consistentcy with the default generic parameter
+        let override_generic_arg = |ty, dest: &mut PathArguments| {
+            let args = syn::parse(quote!( <#ty> ).into()).expect("able to parse <#ty>");
+            *dest = PathArguments::AngleBracketed(args);
         };
 
         match ident.to_string().as_str() {
             "Counter" => {
-                // NOTE: Use the prometric type alias here so it remains consistent.
                 let generic =
                     maybe_generic.unwrap_or(syn::parse_str("::prometric::CounterDefault").unwrap());
-                Ok(Self::Counter(ident.clone(), generic))
+                override_generic_arg(generic.clone(), &mut last_segment.arguments);
+
+                Ok(Self::Counter(path, generic))
             }
             "Gauge" => {
                 // NOTE: Use the prometric type alias here so it remains consistent.
                 let generic =
                     maybe_generic.unwrap_or(syn::parse_str("::prometric::GaugeDefault").unwrap());
-                Ok(Self::Gauge(ident.clone(), generic))
+                override_generic_arg(generic.clone(), &mut last_segment.arguments);
+
+                Ok(Self::Gauge(path, generic))
             }
-            "Histogram" => Ok(Self::Histogram(ident.clone())),
-            "Summary" => {
-                // NOTE: Use the prometric type alias here so it remains consistent.
-                let generic = maybe_generic.unwrap_or(
-                    syn::parse_str("::prometric::summary::DefaultSummaryProvider").unwrap(),
-                );
-                Ok(Self::Summary(ident.clone(), generic))
-            }
+            "Histogram" => Ok(Self::Histogram(path)),
+            "Summary" => Ok(Self::Summary(path)),
             other => Err(syn::Error::new_spanned(
                 ident,
                 format!("Unsupported metric type '{other}'. Use Counter, Gauge, or Histogram"),
@@ -99,12 +108,12 @@ impl MetricType {
         }
     }
 
-    fn full_type(&self) -> TokenStream {
+    fn full_type(&self) -> &TypePath {
         match self {
-            Self::Counter(ident, ty) => quote! { #ident<#ty> },
-            Self::Gauge(ident, ty) => quote! { #ident<#ty> },
-            Self::Histogram(ident) => quote! { #ident },
-            Self::Summary(ident, ty) => quote! { #ident<#ty> },
+            Self::Counter(path, _)
+            | Self::Gauge(path, _)
+            | Self::Histogram(path)
+            | Self::Summary(path) => path,
         }
     }
 
@@ -125,7 +134,7 @@ impl MetricType {
                     Ok(maybe_buckets.map(Partitions::Buckets).unwrap_or(Partitions::None))
                 }
             }
-            MetricType::Summary(_, _) => {
+            MetricType::Summary(_) => {
                 if maybe_buckets.is_some() {
                     Err(syn::Error::new_spanned(
                         maybe_buckets,
@@ -238,13 +247,11 @@ impl MetricBuilder {
 
         let full_name = format!("{scope}{DEFAULT_SEPARATOR}{metric_name}");
 
-        let Type::Path(type_path) = &metric_field.ty else {
+        let Type::Path(type_path) = metric_field.ty else {
             return Err(syn::Error::new_spanned(field, "Expected a path type"));
         };
 
-        let last_segment = type_path.path.segments.last().unwrap();
-
-        let ty = MetricType::from_segment(last_segment)?;
+        let ty = MetricType::from_path(type_path)?;
 
         let partitions = ty.partitions_for(metric_field.buckets, metric_field.quantiles)?;
 
@@ -290,7 +297,7 @@ impl MetricBuilder {
                     #ident: <#ty>::new(self.registry, #name, #help, &[#(#labels),*], self.labels.clone(), #buckets)
                 }
             }
-            MetricType::Summary(_, _) => {
+            MetricType::Summary(_) => {
                 let quantiles = if let Some(quantiles_expr) = partitions.quantiles() {
                     quote! { Some(#quantiles_expr.into()) }
                 } else {
@@ -325,9 +332,9 @@ impl MetricBuilder {
                     doc_builder.push_str("\n* Buckets: [::prometheus::DEFAULT_BUCKETS]");
                 }
             }
-            MetricType::Summary(_, _) => {
-                if let Some(buckets_expr) = self.partitions.quantiles() {
-                    doc_builder.push_str(&format!("\n* Quantiles: {}", quote! { #buckets_expr }));
+            MetricType::Summary(_) => {
+                if let Some(quantiles_expr) = self.partitions.quantiles() {
+                    doc_builder.push_str(&format!("\n* Quantiles: {}", quote! { #quantiles_expr }));
                 } else {
                     doc_builder.push_str("\n* Buckets: [::prometric::summary::DEFAULT_QUANTILES]");
                 }
@@ -463,7 +470,7 @@ impl MetricBuilder {
                     self.inner.observe(labels, value.into_atomic());
                 }
             },
-            MetricType::Summary(_, _) => quote! {
+            MetricType::Summary(_) => quote! {
                 #vis fn observe<V>(&self, value: V)
                 where
                     V: ::prometric::IntoAtomic<f64>,

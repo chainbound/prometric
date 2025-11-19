@@ -87,11 +87,6 @@ impl<P: SummaryProvider> GenericSummary<P> {
         })
     }
 
-    /// Record a given observation in the summary.
-    pub fn observe(&mut self, v: f64) {
-        self.provider.observe(v);
-    }
-
     /// Make a snapshot of the current summary state exposed as a Protobuf struct
     pub fn proto(&self) -> pp::Summary {
         let snapshot = self.provider.snapshot();
@@ -120,7 +115,7 @@ impl<P: SummaryProvider> GenericSummary<P> {
 
 impl<P: ConcurrentSummaryProvider> GenericSummary<P> {
     /// Record a given observation in the summary.
-    pub fn concurrent_observe(&self, v: f64) {
+    pub fn observe(&self, v: f64) {
         self.provider.concurrent_observe(v);
     }
 }
@@ -133,7 +128,7 @@ impl<S: SummaryMetric> Metric for GenericSummary<S> {
     }
 }
 
-/// Similarly to [`prometheus::HistogramVec`], but for Summaries.
+/// Similarly to [`::prometheus::HistogramVec`], but for Summaries.
 pub struct SummaryVecBuilder<S> {
     _p: PhantomData<S>,
 }

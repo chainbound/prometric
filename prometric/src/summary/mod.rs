@@ -6,6 +6,8 @@ pub mod traits;
 use traits::{ConcurrentSummaryProvider, SummaryMetric};
 
 mod generic;
+use generic::SummaryVecBuilder;
+pub use generic::{DEFAULT_QUANTILES, SummaryOpts};
 
 pub mod simple;
 
@@ -14,8 +16,6 @@ use rolling::{RollingSummary, RollingSummaryOpts};
 
 pub mod batching;
 use batching::{BatchOps, BatchedSummary};
-
-pub use generic::{DEFAULT_QUANTILES, SummaryOpts, SummaryVecBuilder};
 
 pub type DefaultSummaryProvider = BatchedSummary<RollingSummary>;
 
@@ -87,6 +87,6 @@ impl Summary<DefaultSummaryProvider> {
 
 impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
     pub fn observe(&self, labels: &[&str], value: f64) {
-        self.inner.with_label_values(labels).concurrent_observe(value);
+        self.inner.with_label_values(labels).observe(value);
     }
 }

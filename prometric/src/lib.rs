@@ -3,8 +3,9 @@
 //! *using* them. The actual usage of metrics is done through the generated structs from the
 //! `prometric-derive` crate.
 //! - [`counter::Counter`]: A counter metric.
-//! - [`guage::Gauge`]: A gauge metric.
+//! - [`gauge::Gauge`]: A gauge metric.
 //! - [`histogram::Histogram`]: A histogram metric.
+//! - [`summary::Summary`]: A summary metric. Requires the `summary` feature to be enabled.
 
 #[cfg(feature = "exporter")]
 pub mod exporter;
