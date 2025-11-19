@@ -13,8 +13,8 @@ pub const DEFAULT_BATCH_SIZE: usize = 64;
 /// Wraps over the given [`SummaryProvider`] `P` to batch measurements according to configured batch
 /// size
 ///
-/// This is useful to transform a [`SummaryProvider`] into a [`ConcurrentSummaryProvider`], with a simple batching logic
-/// for improved lock accesses
+/// This is useful to transform a [`SummaryProvider`] into a [`ConcurrentSummaryProvider`], with a
+/// simple batching logic for improved lock accesses
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
     // This in an ArcSwap so the underlying storage can be atomically retrieved

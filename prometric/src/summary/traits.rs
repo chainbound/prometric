@@ -31,7 +31,7 @@ pub trait ConcurrentSummaryProvider: SummaryProvider {
     fn concurrent_observe(&self, _: f64);
 }
 
-/// Marker trait (or alias) for a [`Summary`] which can be used by [`crate::summary::generic::GenericSummary`]
-/// to implement [`prometheus::Metric`]
+/// Marker trait (or alias) for a [`Summary`] which can be used by
+/// [`crate::summary::generic::GenericSummary`] to implement [`prometheus::Metric`]
 pub trait SummaryMetric: SummaryProvider + Send + Sync + Clone {}
 impl<T: SummaryProvider + Send + Sync + Clone> SummaryMetric for T {}

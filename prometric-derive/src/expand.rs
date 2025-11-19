@@ -77,7 +77,8 @@ impl MetricType {
 
         // Specifically override the generic argument of `dest`
         // This effectively replaces the same type extracted in the `maybe_generic` block
-        // NOTE: Used in the match block below to enforce consistentcy with the default generic parameter
+        // NOTE: Used in the match block below to enforce consistentcy with the default generic
+        // parameter
         let override_generic_arg = |ty, dest: &mut PathArguments| {
             let args = syn::parse(quote!( <#ty> ).into()).expect("able to parse <#ty>");
             *dest = PathArguments::AngleBracketed(args);
@@ -110,10 +111,10 @@ impl MetricType {
 
     fn full_type(&self) -> &TypePath {
         match self {
-            Self::Counter(path, _)
-            | Self::Gauge(path, _)
-            | Self::Histogram(path)
-            | Self::Summary(path) => path,
+            Self::Counter(path, _) |
+            Self::Gauge(path, _) |
+            Self::Histogram(path) |
+            Self::Summary(path) => path,
         }
     }
 
