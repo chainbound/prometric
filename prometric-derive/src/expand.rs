@@ -112,14 +112,28 @@ impl MetricType {
         &self,
         maybe_buckets: Option<syn::Expr>,
         maybe_quantiles: Option<syn::Expr>,
-    ) -> Partitions {
+    ) -> Result<Partitions> {
         match self {
-            MetricType::Counter(_, _) | MetricType::Gauge(_, _) => Partitions::NotApplicable,
+            MetricType::Counter(_, _) | MetricType::Gauge(_, _) => Ok(Partitions::NotApplicable),
             MetricType::Histogram(_) => {
-                maybe_buckets.map(Partitions::Buckets).unwrap_or(Partitions::None)
+                if maybe_quantiles.is_some() {
+                    Err(syn::Error::new_spanned(
+                        maybe_quantiles,
+                        "Invalid configuration for Histogram: `quantiles` is not a valid option, use `buckets` or switch to Summary.",
+                    ))
+                } else {
+                    Ok(maybe_buckets.map(Partitions::Buckets).unwrap_or(Partitions::None))
+                }
             }
             MetricType::Summary(_, _) => {
-                maybe_quantiles.map(Partitions::Quantiles).unwrap_or(Partitions::None)
+                if maybe_buckets.is_some() {
+                    Err(syn::Error::new_spanned(
+                        maybe_buckets,
+                        "Invalid configuration for Summary: `buckets` is not a valid option, use `quantiles` or switch to Histogram.",
+                    ))
+                } else {
+                    Ok(maybe_quantiles.map(Partitions::Quantiles).unwrap_or(Partitions::None))
+                }
             }
         }
     }
@@ -232,7 +246,7 @@ impl MetricBuilder {
 
         let ty = MetricType::from_segment(last_segment)?;
 
-        let partitions = ty.partitions_for(metric_field.buckets, metric_field.quantiles);
+        let partitions = ty.partitions_for(metric_field.buckets, metric_field.quantiles)?;
 
         Ok(Self {
             identifier: metric_field
