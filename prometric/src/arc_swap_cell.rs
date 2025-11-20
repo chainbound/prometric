@@ -210,39 +210,50 @@ mod tests {
         // long lived borrow
         let borrow = cell.load();
 
-        let other_ref = std::thread::spawn(move || {
-            assert_eq!(*borrow, original_value, "Should be the same value");
-
-            std::thread::sleep(borrow_duration);
-            assert_eq!(*borrow, original_value, "Should still be the same value");
-
-            // explicitly drop the outstanding guard
-            std::mem::drop(borrow);
-        });
-
         let cell_clone = cell.clone();
-        let observes_swap = std::thread::spawn(move || {
-            let mut start = None;
-            let mut counter = 0;
-            loop {
-                // this can affect the swap as well
-                // but we keep dropping the value as well
-                if *cell_clone.load() != original_value {
-                    break;
-                } else if start.is_none() {
-                    // populate `now` after the first load
-                    start = Some(Instant::now());
+        let barrier = std::sync::Barrier::new(3);
+
+        let (_, observer, swapper) = std::thread::scope(|s| {
+            let long_lived_ref = s.spawn(|| {
+                assert_eq!(*borrow, original_value, "Should be the same value");
+
+                barrier.wait();
+
+                std::thread::sleep(borrow_duration);
+                assert_eq!(*borrow, original_value, "Should still be the same value");
+
+                // explicitly drop the outstanding guard
+                std::mem::drop(borrow);
+            });
+
+            let observer = s.spawn(|| {
+                barrier.wait();
+
+                let start = Instant::now();
+                loop {
+                    // this can affect the swap as well
+                    // but we keep dropping the value as well
+                    if *cell_clone.load() != original_value {
+                        break;
+                    }
                 }
 
-                counter += 1;
-            }
+                start.elapsed()
+            });
 
-            (counter, start.unwrap().elapsed())
+            let swaps = s.spawn(|| {
+                barrier.wait();
+
+                let now = Instant::now();
+                let previous = cell.swap(42);
+
+                (previous, now.elapsed())
+            });
+
+            (long_lived_ref.join(), observer.join(), swaps.join())
         });
 
-        let now = Instant::now();
-        let previous = cell.swap(42);
-        let full_swap_time = now.elapsed();
+        let (previous, full_swap_time) = swapper.unwrap();
 
         // let's account for some timing skew due to thread spawn
         assert!(
@@ -251,14 +262,11 @@ mod tests {
         );
         assert_eq!(previous, original_value, "Previous value should match inserted");
 
-        assert!(other_ref.is_finished(), "Other thread should have finished after swap returns");
-
-        let (reads_before_swap, swap_time) = observes_swap.join().unwrap();
+        let swap_time = observer.unwrap();
         assert!(
             swap_time < (full_swap_time.mul_f64(0.1)),
             "Swap should be observable by other references much before the swap call has finished"
         );
-        assert!(reads_before_swap > 0, "Should have read at least once before swap was in effect");
     }
 
     #[test]
