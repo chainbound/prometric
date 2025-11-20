@@ -10,6 +10,24 @@ use crate::{
 
 pub const DEFAULT_BATCH_SIZE: usize = 64;
 
+/// The configuration for the [`BatchedSummary`]
+#[derive(Clone)]
+pub struct BatchOpts<O> {
+    /// The number of measurements to batch before committing to the inner Summary
+    pub batch_size: usize,
+    pub inner: O,
+}
+
+impl<O> BatchOpts<O> {
+    pub fn from_inner(inner: O) -> Self {
+        Self { batch_size: DEFAULT_BATCH_SIZE, inner }
+    }
+
+    pub fn with_batch_size(self, batch_size: usize) -> Self {
+        Self { batch_size, ..self }
+    }
+}
+
 /// Wraps over the given [`SummaryProvider`] `P` to batch measurements according to configured batch
 /// size
 ///
@@ -36,20 +54,6 @@ impl<P: Clone> Clone for BatchedSummary<P> {
     }
 }
 
-/// The configuration for the [`BatchedSummary`]
-#[derive(Clone)]
-pub struct BatchOpts<O> {
-    /// The number of measurements to batch before committing to the inner Summary
-    pub batch_size: usize,
-    pub inner: O,
-}
-
-impl<O> BatchOpts<O> {
-    pub fn from_inner(inner: O) -> Self {
-        Self { batch_size: DEFAULT_BATCH_SIZE, inner }
-    }
-}
-
 impl<P: SummaryProvider> BatchedSummary<P> {
     /// Commits the current measurements batch to the underlying summary
     ///
@@ -63,6 +67,14 @@ impl<P: SummaryProvider> BatchedSummary<P> {
         for measure in measurements.into_iter() {
             inner.observe(measure);
         }
+    }
+
+    /// Retrieve the inner summary
+    ///
+    /// Will commit the current batch before returning the summary
+    pub fn into_inner(self) -> P {
+        self.commit();
+        self.inner.into_inner()
     }
 }
 
@@ -99,5 +111,54 @@ impl<P: SummaryProvider> ConcurrentSummaryProvider for BatchedSummary<P> {
             // Commit the current batch
             self.commit()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::{
+        simple::{SimpleSummary, SimpleSummaryOpts},
+        traits::Summary,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn concurrent_observe() {
+        // TODO: quickcheck test
+        let batch_size = DEFAULT_BATCH_SIZE;
+
+        let opts = SimpleSummaryOpts::default();
+        let opts = BatchOpts::from_inner(opts).with_batch_size(batch_size);
+
+        let summary = BatchedSummary::<SimpleSummary>::new(&opts);
+        let summary = Arc::new(summary);
+
+        let tasks = 8;
+        let measurements = 500;
+
+        let mut handles = Vec::with_capacity(tasks);
+        for _ in 0..tasks {
+            let summary = summary.clone();
+            let task = tokio::task::spawn_blocking(move || {
+                for i in 0..measurements {
+                    summary.concurrent_observe(i as f64)
+                }
+            });
+            handles.push(task);
+        }
+
+        for h in handles {
+            h.await.expect("no task panics");
+        }
+
+        let result = summary.snapshot();
+        assert_eq!(
+            result.sample_count(),
+            tasks as u64 * measurements,
+            "Should have all measurements present in the collection"
+        );
     }
 }

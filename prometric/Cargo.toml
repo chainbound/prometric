@@ -37,3 +37,6 @@ exporter = ["dep:hyper", "dep:hyper-util", "dep:tokio"]
 process = ["dep:sysinfo"]
 # Expose a Summary functionality. Enabled by default
 summary = ["dep:metrics-util", "dep:metrics-exporter-prometheus", "dep:parking_lot", "dep:quanta", "dep:orx-concurrent-vec", "dep:arc-swap"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

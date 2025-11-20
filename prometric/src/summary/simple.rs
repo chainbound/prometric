@@ -17,11 +17,18 @@ pub struct SimpleSummary {
 /// Configuration for the Summary
 ///
 /// See [`metrics_util::storage::Summary::new`] for documentation on the various options
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SimpleSummaryOpts {
     pub alpha: f64,
     pub max_buckets: u32,
     pub min_value: f64,
+}
+
+impl Default for SimpleSummaryOpts {
+    fn default() -> Self {
+        // takes from Inner::with_defaults
+        Self { alpha: 0.0001, max_buckets: 32_768, min_value: 1.0e-9 }
+    }
 }
 
 impl SummaryProvider for SimpleSummary {
