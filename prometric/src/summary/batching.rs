@@ -1,12 +1,12 @@
 //! Summary with concurrent measurements (via batching)
 
-use std::sync::Arc;
-
-use arc_swap::ArcSwap;
 use orx_concurrent_vec::ConcurrentVec;
 use parking_lot::RwLock;
 
-use crate::summary::traits::{ConcurrentSummaryProvider, SummaryProvider};
+use crate::{
+    arc_swap_cell::ArcCell,
+    summary::traits::{ConcurrentSummaryProvider, SummaryProvider},
+};
 
 pub const DEFAULT_BATCH_SIZE: usize = 64;
 
@@ -17,9 +17,8 @@ pub const DEFAULT_BATCH_SIZE: usize = 64;
 /// simple batching logic for improved lock accesses
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
-    // This in an ArcSwap so the underlying storage can be atomically retrieved
-    // allowing more measurements to be recorded while the batch is being commited
-    measurements: ArcSwap<ConcurrentVec<f64>>,
+    // We use ArcCell to allow more measurements to be recorded while the batch is being committed
+    measurements: ArcCell<ConcurrentVec<f64>>,
     batch_size: usize,
 
     inner: RwLock<P>,
@@ -27,27 +26,25 @@ pub struct BatchedSummary<P> {
 
 impl<P: Clone> Clone for BatchedSummary<P> {
     fn clone(&self) -> Self {
-        // NOTE: MUST not do a cheap clone of the Arc
-        // To avoid polluting measurements from other references
-        let measurements = ArcSwap::new(self.measurements.load().clone());
+        let measurements = self.measurements.clone();
 
         Self {
             measurements,
-            inner: RwLock::new(self.inner.read().clone()),
             batch_size: self.batch_size,
+            inner: RwLock::new(self.inner.read().clone()),
         }
     }
 }
 
 /// The configuration for the [`BatchedSummary`]
 #[derive(Clone)]
-pub struct BatchOps<O> {
+pub struct BatchOpts<O> {
     /// The number of measurements to batch before committing to the inner Summary
     pub batch_size: usize,
     pub inner: O,
 }
 
-impl<O> BatchOps<O> {
+impl<O> BatchOpts<O> {
     pub fn from_inner(inner: O) -> Self {
         Self { batch_size: DEFAULT_BATCH_SIZE, inner }
     }
@@ -58,11 +55,8 @@ impl<P: SummaryProvider> BatchedSummary<P> {
     ///
     /// Will clear the measurements batch
     pub fn commit(&self) {
-        // If [`ConcurrentVec`] had something like `.take()` the ArcSwap would be unnecessary
-        let measurements = self.measurements.swap(Arc::new(ConcurrentVec::new()));
-        let measurements = Arc::into_inner(measurements)
-            // NOTE: see `Clone` impl above
-            .expect("Measurements shouldn't have been cloned anywhere");
+        // If [`ConcurrentVec`] had something like `.take()` the [`ArcCell`] would be unnecessary
+        let measurements = self.measurements.swap(ConcurrentVec::new());
 
         let mut inner = self.inner.write();
 
@@ -80,7 +74,7 @@ impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
         let inner = RwLock::new(P::new(&opts.inner));
         Self {
             inner,
-            measurements: ArcSwap::from_pointee(ConcurrentVec::new()),
+            measurements: ArcCell::new(ConcurrentVec::new()),
             batch_size: opts.batch_size,
         }
     }
