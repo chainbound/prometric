@@ -1,6 +1,5 @@
 //! Summary with concurrent measurements (via batching)
 
-use orx_concurrent_vec::ConcurrentVec;
 use parking_lot::RwLock;
 
 use crate::{
@@ -28,6 +27,17 @@ impl<O> BatchOpts<O> {
     }
 }
 
+// TODO: switch to FixedVec
+// NOTE: ConcurrentVec doesn't currently implement `Clone` over _all_ possible `P`, but only on the
+// default one
+type Batch<T> = orx_concurrent_vec::ConcurrentVec<
+    T,
+    orx_concurrent_vec::SplitVec<
+        orx_concurrent_vec::ConcurrentElement<T>,
+        orx_concurrent_vec::Doubling,
+    >,
+>;
+
 /// Wraps over the given [`SummaryProvider`] `P` to batch measurements according to configured batch
 /// size
 ///
@@ -36,7 +46,7 @@ impl<O> BatchOpts<O> {
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
     // We use ArcCell to allow more measurements to be recorded while the batch is being committed
-    measurements: ArcCell<ConcurrentVec<f64>>,
+    measurements: ArcCell<Batch<f64>>,
     batch_size: usize,
 
     inner: RwLock<P>,
@@ -55,12 +65,27 @@ impl<P: Clone> Clone for BatchedSummary<P> {
 }
 
 impl<P: SummaryProvider> BatchedSummary<P> {
+    fn new_batch(batch_size: usize) -> Batch<f64> {
+        // We will always have at most `batch_size` measurements before committing, so let's
+        // preallocate enough capacity
+
+        // NOTE: We should also overallocate to have some overhead if
+        // some measurements are added before the commit operation takes ownership of the
+        // current batch
+
+        // NOTE: `SplitVec` can't be initialized with a requested total capacity directly
+        let mut batch = Batch::new();
+        batch.reserve_maximum_capacity(batch_size);
+
+        batch
+    }
+
     /// Commits the current measurements batch to the underlying summary
     ///
-    /// Will clear the measurements batch
+    /// Will clear current the measurements batch
     pub fn commit(&self) {
-        // If [`ConcurrentVec`] had something like `.take()` the [`ArcCell`] would be unnecessary
-        let measurements = self.measurements.swap(ConcurrentVec::new());
+        // If [`FixedBatch`] had something like `.take()` the [`ArcCell`] would be unnecessary
+        let measurements = self.measurements.swap(Self::new_batch(self.batch_size));
 
         let mut inner = self.inner.write();
 
@@ -86,7 +111,7 @@ impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
         let inner = RwLock::new(P::new(&opts.inner));
         Self {
             inner,
-            measurements: ArcCell::new(ConcurrentVec::new()),
+            measurements: ArcCell::new(Self::new_batch(opts.batch_size)),
             batch_size: opts.batch_size,
         }
     }
@@ -108,6 +133,10 @@ impl<P: SummaryProvider> ConcurrentSummaryProvider for BatchedSummary<P> {
         measurements.push(val);
 
         if measurements.len() >= self.batch_size {
+            // forcefully drop the guard before committing
+            // to avoid deadlocks
+            std::mem::drop(measurements);
+
             // Commit the current batch
             self.commit()
         }
@@ -127,7 +156,8 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_observe() {
-        // TODO: quickcheck test
+        // TODO: Consider converting into quickcheck test
+        // parametrized  by: batch size, number of measurements and concurrent tasks
         let batch_size = DEFAULT_BATCH_SIZE;
 
         let opts = SimpleSummaryOpts::default();
@@ -137,7 +167,7 @@ mod tests {
         let summary = Arc::new(summary);
 
         let tasks = 8;
-        let measurements = 500;
+        let measurements = 50_000;
 
         let mut handles = Vec::with_capacity(tasks);
         for _ in 0..tasks {

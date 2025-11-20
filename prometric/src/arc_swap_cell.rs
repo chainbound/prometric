@@ -15,7 +15,8 @@ use arc_swap::{
 /// An utility to use an [ `Arc` ] similarly to a cell
 ///
 /// # Invariants
-/// The inner [`Arc`] is inaccessible outside this cell, therefore the strong count is always less than or equal to 1 + number of outstanding [`Guard`]s
+/// The inner [`Arc`] is inaccessible outside this cell, therefore the strong count is always less
+/// than or equal to 1 + number of outstanding [`Guard`]s
 pub struct ArcCell<T, S: Strategy<Arc<T>> = DefaultStrategy>(ArcSwapAny<Arc<T>, S>);
 
 impl<T: std::fmt::Debug, S: Strategy<Arc<T>>> std::fmt::Debug for ArcCell<T, S> {
@@ -62,6 +63,10 @@ impl<T, S: Strategy<Arc<T>>> ArcCell<T, S> {
     ///
     /// This function is potentially costly, as it will wait for the inner [`Arc`] to have exactly 1
     /// remaining strong reference before yielding the underlying value
+    ///
+    /// # Warning
+    /// As with other "locking" mechanisms, holding a [`Guard`] and attempting this swap in the same
+    /// thread WILL result in a deadlock.
     pub fn swap(&self, new: T) -> T {
         let mut arc = self.raw_swap(new);
 
@@ -85,7 +90,7 @@ impl<T: Clone, S: Strategy<Arc<T>>> ArcCell<T, S> {
     pub fn swap_immediately(&self, new: T) -> T {
         let arc = self.raw_swap(new);
 
-        Arc::try_unwrap(arc).unwrap_or_else(|arc| T::clone(&arc))
+        Arc::unwrap_or_clone(arc)
     }
 }
 
@@ -103,6 +108,9 @@ impl<T: Clone, S: Strategy<Arc<T>> + Default> Clone for ArcCell<T, S> {
 /// Guard for [`ArcCell`]
 ///
 /// Enforces the [`ArcCell`] invariants by ensuring the inner [`Arc`] is not accessible directly
+///
+/// # Warning
+/// WILL cause a deadlock if held while attempting to [`ArcCell::swap`] in the same thread
 pub struct Guard<T, S: Strategy<Arc<T>>>(InnerGuard<Arc<T>, S>);
 
 impl<T, S: Strategy<Arc<T>>> Deref for Guard<T, S> {
@@ -258,12 +266,9 @@ mod tests {
         let cell = ArcCell::<_>::new(0);
 
         let now = Instant::now();
-
         let previous = cell.swap(42);
 
-        let after = Instant::now();
-
-        let elapsed = after - now;
+        let elapsed = now.elapsed();
 
         assert!(
             elapsed <= Duration::from_millis(100),
