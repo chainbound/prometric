@@ -11,12 +11,7 @@ use crate::summary::{DEFAULT_QUANTILES, simple::SimpleSummary, traits::SummaryPr
 
 // from metrics_exporter_prometheus::Distribution
 pub const DEFAULT_SUMMARY_BUCKET_DURATION: Duration = Duration::from_secs(20);
-// the match is a const-hack to unwrap
-pub const DEFAULT_SUMMARY_BUCKET_COUNT: NonZeroU32 = match NonZeroU32::new(3) {
-    Some(v) => v,
-    #[allow(clippy::out_of_bounds_indexing)]
-    None => [][0],
-};
+pub const DEFAULT_SUMMARY_BUCKET_COUNT: NonZeroU32 = NonZeroU32::new(3).unwrap();
 
 pub type RollingSummary = metrics_exporter_prometheus::Distribution;
 

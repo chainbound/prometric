@@ -67,7 +67,7 @@ impl<P: SummaryProvider> BatchedSummary<P> {
 }
 
 impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
-    type Opts = BatchOps<P::Opts>;
+    type Opts = BatchOpts<P::Opts>;
     type Summary = P::Summary;
 
     fn new(opts: &Self::Opts) -> Self {

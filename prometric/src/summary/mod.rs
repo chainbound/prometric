@@ -15,7 +15,7 @@ pub mod rolling;
 use rolling::{RollingSummary, RollingSummaryOpts};
 
 pub mod batching;
-use batching::{BatchOps, BatchedSummary};
+use batching::{BatchOpts, BatchedSummary};
 
 pub type DefaultSummaryProvider = BatchedSummary<RollingSummary>;
 
@@ -58,7 +58,7 @@ impl Summary<DefaultSummaryProvider> {
         let quantiles = quantiles.unwrap_or(generic::DEFAULT_QUANTILES.to_vec());
 
         let opts = RollingSummaryOpts::default().with_quantiles(&quantiles);
-        let opts = BatchOps::from_inner(opts);
+        let opts = BatchOpts::from_inner(opts);
         let opts =
             SummaryOpts::new(name, help, opts).const_labels(const_labels).quantiles(quantiles);
 
