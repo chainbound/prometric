@@ -85,6 +85,8 @@ impl<P: SummaryProvider> BatchedSummary<P> {
     /// Will clear current the measurements batch
     pub fn commit(&self) {
         // If [`FixedBatch`] had something like `.take()` the [`ArcCell`] would be unnecessary
+        // NOTE: we take the previous batch so new measurements can be added without changing
+        // the set that we are currently committing
         let measurements = self.measurements.swap(Self::new_batch(self.batch_size));
 
         let mut inner = self.inner.write();
