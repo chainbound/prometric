@@ -316,7 +316,7 @@ impl MetricBuilder {
         let help = &self.help;
         let mut doc_builder = format!(
             "{help}\n\
-            * Metric type: [::prometric::{}]",
+            * Metric type: [`::prometric::{}`]",
             self.ty,
         );
 
@@ -330,14 +330,15 @@ impl MetricBuilder {
                 if let Some(buckets_expr) = self.partitions.buckets() {
                     doc_builder.push_str(&format!("\n* Buckets: {}", quote! { #buckets_expr }));
                 } else {
-                    doc_builder.push_str("\n* Buckets: [::prometheus::DEFAULT_BUCKETS]");
+                    doc_builder.push_str("\n* Buckets: [`::prometheus::DEFAULT_BUCKETS`]");
                 }
             }
             MetricType::Summary(_) => {
                 if let Some(quantiles_expr) = self.partitions.quantiles() {
                     doc_builder.push_str(&format!("\n* Quantiles: {}", quote! { #quantiles_expr }));
                 } else {
-                    doc_builder.push_str("\n* Buckets: [::prometric::summary::DEFAULT_QUANTILES]");
+                    doc_builder
+                        .push_str("\n* Buckets: [`::prometric::summary::DEFAULT_QUANTILES`]");
                 }
             }
         }
