@@ -80,7 +80,7 @@ impl MetricType {
         // NOTE: Used in the match block below to enforce consistentcy with the default generic
         // parameter
         let override_generic_arg = |ty, dest: &mut PathArguments| {
-            let args = syn::parse(quote!( <#ty> ).into()).expect("able to parse <#ty>");
+            let args = syn::parse_quote! {<#ty>};
             *dest = PathArguments::AngleBracketed(args);
         };
 
