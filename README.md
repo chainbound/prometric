@@ -18,7 +18,27 @@ instead of [metrics](https://docs.rs/metrics/latest/metrics), and supports dynam
 
 ### Basic Usage
 
-See [`basic_usage`](./prometric-derive/examples/basic_usage.rs) example for usage.
+See [`basic_usage`](./prometric-derive/examples/basic_usage.rs) example for usage. Here's a reduced example usage:
+
+``` rust
+// The `scope` attribute is used to set the prefix for the metric names in this struct.
+#[metrics(scope = "app")]
+struct AppMetrics {
+    /// The total number of HTTP requests.
+    #[metric(rename = "http_requests_total", labels = ["method", "path"])]
+    http_requests: Counter,
+}
+
+// Build the metrics struct with static labels, which will initialize and register the metrics
+// with the default registry. A custom registry can be used by passing it to the builder
+// using `with_registry`.
+let metrics =
+    AppMetrics::builder().with_label("host", "localhost").with_label("port", "8080").build();
+
+// Metric fields each get an accessor method generated, which can be used to interact with the
+// metric. The arguments to the accessor method are the labels for the metric.
+metrics.http_requests("GET", "/").inc();
+```
 
 #### Sample Output
 
