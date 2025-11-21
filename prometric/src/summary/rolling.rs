@@ -7,7 +7,9 @@ use std::{num::NonZeroU32, time::Duration};
 use metrics_util::Quantile;
 use quanta::Instant;
 
-use crate::summary::{DEFAULT_QUANTILES, simple::SimpleSummary, traits::SummaryProvider};
+use crate::summary::{
+    DEFAULT_QUANTILES, simple::SimpleSummary, traits::NonConcurrentSummaryProvider,
+};
 
 // from metrics_exporter_prometheus::Distribution
 pub const DEFAULT_SUMMARY_BUCKET_DURATION: Duration = Duration::from_secs(20);
@@ -44,11 +46,11 @@ impl Default for RollingSummaryOpts {
     }
 }
 
-impl SummaryProvider for RollingSummary {
+impl NonConcurrentSummaryProvider for RollingSummary {
     type Opts = RollingSummaryOpts;
     type Summary = SimpleSummary;
 
-    fn new(opts: &Self::Opts) -> Self {
+    fn new_provider(opts: &Self::Opts) -> Self {
         let distribution = metrics_exporter_prometheus::DistributionBuilder::new(
             opts.quantiles.clone(),
             Some(opts.duration),
@@ -72,7 +74,7 @@ impl SummaryProvider for RollingSummary {
         self.record_samples(&[(sample, now)]);
     }
 
-    fn snapshot(&self) -> <Self as SummaryProvider>::Summary {
+    fn snapshot(&self) -> SimpleSummary {
         match self {
             RollingSummary::Summary(summary, _, sum) => {
                 let summary = summary.snapshot(Instant::now());

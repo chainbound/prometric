@@ -16,7 +16,24 @@ pub trait SummaryProvider {
     type Summary: Summary;
 
     /// Create a new instance of the given provider
-    fn new(opts: &Self::Opts) -> Self;
+    fn new_provider(opts: &Self::Opts) -> Self;
+
+    /// Add a new data point to the summary's collection
+    fn observe(&self, _: f64);
+
+    /// Return the current summary computed over the observations
+    fn snapshot(&self) -> Self::Summary;
+}
+
+/// Abstracts over the metric summary logic user to compute the given quantile results
+///
+/// Differing from [`SummaryProvider`] by the `observe` `&mut self` requirement.
+pub trait NonConcurrentSummaryProvider {
+    type Opts: Clone + Send + Sync;
+    type Summary: Summary;
+
+    /// Create a new instance of the given provider
+    fn new_provider(opts: &Self::Opts) -> Self;
 
     /// Add a new data point to the summary's collection
     fn observe(&mut self, _: f64);
@@ -25,13 +42,24 @@ pub trait SummaryProvider {
     fn snapshot(&self) -> Self::Summary;
 }
 
-/// Same as [`SummaryProvider`] with the ability to observe a data point concurrently
-pub trait ConcurrentSummaryProvider: SummaryProvider {
-    /// Add a new data point to the summary's collection in a concurrent manner
-    fn concurrent_observe(&self, _: f64);
+impl<T: SummaryProvider> NonConcurrentSummaryProvider for T {
+    type Opts = T::Opts;
+    type Summary = T::Summary;
+
+    fn new_provider(opts: &Self::Opts) -> Self {
+        <Self as SummaryProvider>::new_provider(opts)
+    }
+
+    fn observe(&mut self, val: f64) {
+        SummaryProvider::observe(self, val)
+    }
+
+    fn snapshot(&self) -> Self::Summary {
+        SummaryProvider::snapshot(self)
+    }
 }
 
 /// Marker trait (or alias) for a [`Summary`] which can be used by
 /// [`crate::summary::generic::GenericSummary`] to implement [`prometheus::Metric`]
-pub trait SummaryMetric: SummaryProvider + Send + Sync + Clone {}
-impl<T: SummaryProvider + Send + Sync + Clone> SummaryMetric for T {}
+pub trait SummaryMetric: NonConcurrentSummaryProvider + Send + Sync + Clone {}
+impl<T: NonConcurrentSummaryProvider + Send + Sync + Clone> SummaryMetric for T {}

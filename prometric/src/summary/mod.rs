@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use prometheus::core::MetricVec;
 
 pub mod traits;
-use traits::{ConcurrentSummaryProvider, SummaryMetric};
+use traits::{NonConcurrentSummaryProvider, SummaryMetric, SummaryProvider};
 
 mod generic;
 use generic::SummaryVecBuilder;
@@ -23,11 +23,11 @@ type SummaryVec<S = DefaultSummaryProvider> = MetricVec<SummaryVecBuilder<S>>;
 
 /// A Summary metric.
 #[derive(Clone, Debug)]
-pub struct Summary<S: ConcurrentSummaryProvider + SummaryMetric = DefaultSummaryProvider> {
+pub struct Summary<S: SummaryMetric = DefaultSummaryProvider> {
     inner: SummaryVec<S>,
 }
 
-impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
+impl<S: SummaryMetric> Summary<S> {
     // NOTE: Unlike other items like `HistogramVec`, this can't exist on `MetricVec` directly
     // as we are not allowed to have inherent impls on foreign types
     fn new_summary_vec(
@@ -85,8 +85,54 @@ impl Summary<DefaultSummaryProvider> {
     }
 }
 
-impl<S: ConcurrentSummaryProvider + SummaryMetric> Summary<S> {
+impl<S> Summary<S>
+where
+    S: SummaryProvider<Summary = <S as NonConcurrentSummaryProvider>::Summary> + SummaryMetric,
+{
     pub fn observe(&self, labels: &[&str], value: f64) {
-        self.inner.with_label_values(labels).observe(value);
+        SummaryProvider::observe(&**self.inner.with_label_values(labels), value);
+    }
+
+    pub fn snapshot(&self, labels: &[&str]) -> <S as NonConcurrentSummaryProvider>::Summary {
+        NonConcurrentSummaryProvider::snapshot(&**self.inner.with_label_values(labels))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::traits::Summary as _;
+
+    use super::*;
+
+    const MEASUREMENTS: usize = 50_000;
+    const PRINT_EVERY: usize = 100;
+
+    fn measure<S>(summary: Summary<S>)
+    where
+        S: SummaryProvider<Summary = <S as NonConcurrentSummaryProvider>::Summary> + SummaryMetric,
+    {
+        for i in 0..MEASUREMENTS {
+            let start = std::time::Instant::now();
+            summary.observe(&[], i as f64);
+            if i % PRINT_EVERY == 0 {
+                println!("Time taken: {:?}", start.elapsed());
+            }
+        }
+
+        let result = summary.snapshot(&[]);
+        assert_eq!(
+            result.sample_count(),
+            MEASUREMENTS as u64,
+            "Should have all measurements present in the collection"
+        );
+    }
+
+    #[test]
+    fn smoke() {
+        let registry = prometheus::default_registry();
+        let summary =
+            Summary::new(&registry, "smoke", "Smoke test summary", &[], Default::default(), None);
+
+        measure(summary)
     }
 }

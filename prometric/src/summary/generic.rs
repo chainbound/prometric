@@ -1,6 +1,6 @@
 //! Enables a [`Summary`] to be represented as a prometheus Summary metric
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, ops::Deref, sync::Arc};
 
 use prometheus::{
     Opts,
@@ -8,7 +8,9 @@ use prometheus::{
     proto as pp,
 };
 
-use crate::summary::traits::{ConcurrentSummaryProvider, Summary, SummaryMetric, SummaryProvider};
+use crate::summary::traits::{Summary, SummaryMetric};
+
+use super::traits::NonConcurrentSummaryProvider;
 
 // from metrics_exporter_prometheus::PrometheusBuilder::new
 pub const DEFAULT_QUANTILES: &[f64] = &[0.0, 0.5, 0.9, 0.95, 0.99, 0.999, 1.0];
@@ -62,17 +64,16 @@ impl<O> SummaryOpts<O> {
 /// Uses the configured [`SummaryProvider`] `P` to collect observations and compute quantiles
 ///
 /// Main purpose is to wrap over the summary to convert it into a [`prometheus::proto::Summary`]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GenericSummary<P> {
     label_pairs: Vec<pp::LabelPair>,
 
     provider: P,
 
-    /// The configured quantiles
     quantiles: Vec<f64>,
 }
 
-impl<P: SummaryProvider> GenericSummary<P> {
+impl<P: NonConcurrentSummaryProvider> GenericSummary<P> {
     pub fn new<V: AsRef<str>>(
         opts: &SummaryOpts<P::Opts>,
         label_values: &[V],
@@ -82,7 +83,7 @@ impl<P: SummaryProvider> GenericSummary<P> {
 
         Ok(Self {
             label_pairs,
-            provider: P::new(&opts.summary_opts),
+            provider: P::new_provider(&opts.summary_opts),
             quantiles: opts.quantiles.clone(),
         })
     }
@@ -113,14 +114,37 @@ impl<P: SummaryProvider> GenericSummary<P> {
     }
 }
 
-impl<P: ConcurrentSummaryProvider> GenericSummary<P> {
-    /// Record a given observation in the summary.
-    pub fn observe(&self, v: f64) {
-        self.provider.concurrent_observe(v);
+impl<P> Deref for GenericSummary<P> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.provider
     }
 }
 
-impl<S: SummaryMetric> Metric for GenericSummary<S> {
+#[derive(Clone)]
+/// NewType over [`GenericSummaryImpl`]
+///
+/// Uses `Arc` to ensure clones refer to the same data.
+/// This is becuase [ `prometheus::core::MetricVec` ] will clone the metric each time it is to be
+/// accessed, even when inserting new data
+pub struct GenericSummaryMetric<P>(Arc<GenericSummary<P>>);
+
+impl<P> Deref for GenericSummaryMetric<P> {
+    type Target = GenericSummary<P>;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl<P> From<GenericSummary<P>> for GenericSummaryMetric<P> {
+    fn from(value: GenericSummary<P>) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl<P: SummaryMetric> Metric for GenericSummaryMetric<P> {
     fn metric(&self) -> pp::Metric {
         let mut m = pp::Metric::from_label(self.label_pairs.clone());
         m.set_summary(self.proto());
@@ -146,11 +170,14 @@ impl<P> SummaryVecBuilder<P> {
 }
 
 impl<S: SummaryMetric> MetricVecBuilder for SummaryVecBuilder<S> {
-    type M = GenericSummary<S>;
+    // NOTE: [`prometheus::core::MetricVec`] clones this `M` whenever it is to be returned,
+    // given a set of label.
+    // Therefore, we want this clone to refer to the same instance of the data.
+    type M = GenericSummaryMetric<S>;
     type P = SummaryOpts<S::Opts>;
 
     fn build<V: AsRef<str>>(&self, opts: &Self::P, vals: &[V]) -> prometheus::Result<Self::M> {
-        Self::M::new(opts, vals)
+        GenericSummary::<S>::new(opts, vals).map(Into::into)
     }
 }
 
@@ -196,6 +223,7 @@ mod tests {
         batching::{BatchOpts, BatchedSummary},
         rolling::{RollingSummary, RollingSummaryOpts},
         simple::{SimpleSummary, SimpleSummaryOpts},
+        traits::SummaryProvider,
     };
 
     use super::*;
@@ -204,25 +232,21 @@ mod tests {
     const PRINT_EVERY: usize = 100;
 
     impl<P> GenericSummary<P> {
-        pub fn inner(&self) -> &P {
-            &self.provider
-        }
-
         pub fn inner_mut(&mut self) -> &mut P {
             &mut self.provider
         }
     }
 
-    fn measure<S: SummaryProvider>(mut summary: GenericSummary<S>) {
+    fn measure_mut<S: NonConcurrentSummaryProvider>(mut summary: GenericSummary<S>) {
         for i in 0..MEASUREMENTS {
             let start = std::time::Instant::now();
             summary.inner_mut().observe(i as f64);
-            if i % 100 == 0 {
+            if i % PRINT_EVERY == 0 {
                 println!("Time taken: {:?}", start.elapsed());
             }
         }
 
-        let result = summary.inner().snapshot();
+        let result = summary.snapshot();
         assert_eq!(
             result.sample_count(),
             MEASUREMENTS as u64,
@@ -230,16 +254,16 @@ mod tests {
         );
     }
 
-    fn measure_concurrent<S: ConcurrentSummaryProvider>(summary: GenericSummary<S>) {
+    fn measure<S: SummaryProvider>(summary: GenericSummary<S>) {
         for i in 0..MEASUREMENTS {
             let start = std::time::Instant::now();
-            summary.inner().concurrent_observe(i as f64);
+            summary.observe(i as f64);
             if i % PRINT_EVERY == 0 {
                 println!("Time taken: {:?}", start.elapsed());
             }
         }
 
-        let result = summary.inner().snapshot();
+        let result = summary.snapshot();
         assert_eq!(
             result.sample_count(),
             MEASUREMENTS as u64,
@@ -254,7 +278,7 @@ mod tests {
             SummaryOpts::new("test_summary", "simple", opts).quantiles(DEFAULT_QUANTILES.to_vec());
         let summary = GenericSummary::<SimpleSummary>::new::<&str>(&opts, &[]).unwrap();
 
-        measure(summary);
+        measure_mut(summary);
     }
 
     #[test]
@@ -266,7 +290,7 @@ mod tests {
         let summary =
             GenericSummary::<BatchedSummary<SimpleSummary>>::new::<&str>(&opts, &[]).unwrap();
 
-        measure_concurrent(summary);
+        measure(summary);
     }
 
     #[test]
@@ -276,7 +300,7 @@ mod tests {
             SummaryOpts::new("test_summary", "rolling", opts).quantiles(DEFAULT_QUANTILES.to_vec());
         let summary = GenericSummary::<RollingSummary>::new::<&str>(&opts, &[]).unwrap();
 
-        measure(summary);
+        measure_mut(summary);
     }
 
     #[test]
@@ -288,6 +312,6 @@ mod tests {
         let summary =
             GenericSummary::<BatchedSummary<RollingSummary>>::new::<&str>(&opts, &[]).unwrap();
 
-        measure_concurrent(summary);
+        measure(summary);
     }
 }

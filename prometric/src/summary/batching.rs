@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arc_cell::ArcCell;
 use parking_lot::RwLock;
 
-use crate::summary::traits::{ConcurrentSummaryProvider, SummaryProvider};
+use crate::summary::traits::{NonConcurrentSummaryProvider, SummaryProvider};
 
 pub const DEFAULT_BATCH_SIZE: usize = 128;
 
@@ -38,10 +38,10 @@ type Batch<T> = orx_concurrent_vec::ConcurrentVec<
     >,
 >;
 
-/// Wraps over the given [`SummaryProvider`] `P` to batch measurements according to configured batch
+/// Wraps over the given [`NonConcurrentSummaryProvider`] `P` to batch measurements according to configured batch
 /// size
 ///
-/// This is useful to transform a [`SummaryProvider`] into a [`ConcurrentSummaryProvider`], with a
+/// This is useful to transform a [`NonConcurrentSummaryProvider`] into a [`SummaryProvider`], with a
 /// simple batching logic for improved lock accesses
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
@@ -54,17 +54,28 @@ pub struct BatchedSummary<P> {
 
 impl<P: Clone> Clone for BatchedSummary<P> {
     fn clone(&self) -> Self {
-        let measurements = self.measurements.clone();
+        // [ `ArcCell::clone` ] just makes a clone to the inner Arc
+        let measurements = Batch::clone(&self.measurements.get());
 
         Self {
-            measurements,
+            measurements: ArcCell::new(Arc::new(measurements)),
             batch_size: self.batch_size,
             inner: RwLock::new(self.inner.read().clone()),
         }
     }
 }
 
-impl<P: SummaryProvider> BatchedSummary<P> {
+impl<P: NonConcurrentSummaryProvider> BatchedSummary<P> {
+    // These exists for utility, to avoid having to use the provider trait
+    pub fn new(opts: &BatchOpts<P::Opts>) -> Self {
+        <Self as SummaryProvider>::new_provider(opts)
+    }
+
+    // These exists for utility, to avoid having to use the provider trait
+    pub fn snapshot(&self) -> P::Summary {
+        SummaryProvider::snapshot(self)
+    }
+
     fn new_batch(batch_size: usize) -> Arc<Batch<f64>> {
         // We will always have at most `batch_size` measurements before committing, so let's
         // preallocate enough capacity
@@ -81,7 +92,7 @@ impl<P: SummaryProvider> BatchedSummary<P> {
     }
 
     /// Wait for the given Arc to have a single owner and obtain the inner value
-    pub(crate) fn wait_for_arc<T>(mut arc: Arc<T>) -> T {
+    fn wait_for_arc<T>(mut arc: Arc<T>) -> T {
         loop {
             match Arc::try_unwrap(arc) {
                 Ok(inner) => return inner,
@@ -120,12 +131,12 @@ impl<P: SummaryProvider> BatchedSummary<P> {
     }
 }
 
-impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
+impl<P: NonConcurrentSummaryProvider> SummaryProvider for BatchedSummary<P> {
     type Opts = BatchOpts<P::Opts>;
     type Summary = P::Summary;
 
-    fn new(opts: &Self::Opts) -> Self {
-        let inner = RwLock::new(P::new(&opts.inner));
+    fn new_provider(opts: &Self::Opts) -> Self {
+        let inner = RwLock::new(P::new_provider(&opts.inner));
         Self {
             inner,
             measurements: ArcCell::new(Self::new_batch(opts.batch_size)),
@@ -133,19 +144,7 @@ impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
         }
     }
 
-    fn observe(&mut self, val: f64) {
-        self.concurrent_observe(val);
-    }
-
-    fn snapshot(&self) -> Self::Summary {
-        // Forcefully commit the current batch before snapshotting
-        self.commit();
-        self.inner.read().snapshot()
-    }
-}
-
-impl<P: SummaryProvider> ConcurrentSummaryProvider for BatchedSummary<P> {
-    fn concurrent_observe(&self, val: f64) {
+    fn observe(&self, val: f64) {
         let measurements = self.measurements.get();
         measurements.push(val);
 
@@ -157,6 +156,12 @@ impl<P: SummaryProvider> ConcurrentSummaryProvider for BatchedSummary<P> {
             // Commit the current batch
             self.commit()
         }
+    }
+
+    fn snapshot(&self) -> Self::Summary {
+        // Forcefully commit the current batch before snapshotting
+        self.commit();
+        self.inner.read().snapshot()
     }
 }
 
@@ -191,7 +196,7 @@ mod tests {
             let summary = summary.clone();
             let task = std::thread::spawn(move || {
                 for i in 0..measurements {
-                    summary.concurrent_observe(i as f64)
+                    summary.observe(i as f64)
                 }
             });
             handles.push(task);
@@ -224,7 +229,7 @@ mod tests {
 
         for i in 0..measurements {
             let start = std::time::Instant::now();
-            summary.concurrent_observe(i as f64);
+            summary.observe(i as f64);
             if i % 100 == 0 {
                 println!("Time taken: {:?}", start.elapsed());
             }

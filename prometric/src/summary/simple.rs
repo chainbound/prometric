@@ -4,7 +4,7 @@
 
 use metrics_util::storage::Summary as Inner;
 
-use crate::summary::traits::{Summary, SummaryProvider};
+use crate::summary::traits::{NonConcurrentSummaryProvider, Summary};
 
 /// A simple Summary metric implementation
 #[derive(Debug, Clone)]
@@ -31,11 +31,11 @@ impl Default for SimpleSummaryOpts {
     }
 }
 
-impl SummaryProvider for SimpleSummary {
+impl NonConcurrentSummaryProvider for SimpleSummary {
     type Opts = SimpleSummaryOpts;
     type Summary = Self;
 
-    fn new(opts: &Self::Opts) -> Self {
+    fn new_provider(opts: &Self::Opts) -> Self {
         Self { inner: Inner::new(opts.alpha, opts.max_buckets, opts.min_value), sum: 0. }
     }
 
