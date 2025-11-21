@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 
 use crate::summary::traits::{ConcurrentSummaryProvider, SummaryProvider};
 
-pub const DEFAULT_BATCH_SIZE: usize = 64;
+pub const DEFAULT_BATCH_SIZE: usize = 128;
 
 /// The configuration for the [`BatchedSummary`]
 #[derive(Clone)]
@@ -171,8 +171,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn concurrent_observe() {
+    #[test]
+    fn concurrent_observe() {
         // TODO: Consider converting into quickcheck test
         // parametrized  by: batch size, number of measurements and concurrent tasks
         let batch_size = DEFAULT_BATCH_SIZE;
@@ -189,7 +189,7 @@ mod tests {
         let mut handles = Vec::with_capacity(tasks);
         for _ in 0..tasks {
             let summary = summary.clone();
-            let task = tokio::task::spawn_blocking(move || {
+            let task = std::thread::spawn(move || {
                 for i in 0..measurements {
                     summary.concurrent_observe(i as f64)
                 }
@@ -198,13 +198,42 @@ mod tests {
         }
 
         for h in handles {
-            h.await.expect("no task panics");
+            h.join().expect("no task panics");
         }
 
         let result = summary.snapshot();
         assert_eq!(
             result.sample_count(),
             tasks as u64 * measurements,
+            "Should have all measurements present in the collection"
+        );
+    }
+
+    #[test]
+    fn single_threaded_observe() {
+        // TODO: Consider converting into quickcheck test
+        // parametrized  by: batch size, number of measurements
+        let batch_size = DEFAULT_BATCH_SIZE;
+
+        let opts = SimpleSummaryOpts::default();
+        let opts = BatchOpts::from_inner(opts).with_batch_size(batch_size);
+
+        let summary = BatchedSummary::<SimpleSummary>::new(&opts);
+
+        let measurements = 50_000;
+
+        for i in 0..measurements {
+            let start = std::time::Instant::now();
+            summary.concurrent_observe(i as f64);
+            if i % 100 == 0 {
+                println!("Time taken: {:?}", start.elapsed());
+            }
+        }
+
+        let result = summary.snapshot();
+        assert_eq!(
+            result.sample_count(),
+            measurements,
             "Should have all measurements present in the collection"
         );
     }

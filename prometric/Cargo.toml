@@ -39,4 +39,3 @@ process = ["dep:sysinfo"]
 summary = ["dep:metrics-util", "dep:metrics-exporter-prometheus", "dep:parking_lot", "dep:quanta", "dep:orx-concurrent-vec", "dep:arc-cell"]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
