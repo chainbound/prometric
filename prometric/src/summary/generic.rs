@@ -189,3 +189,105 @@ fn make_label_pairs<V: AsRef<str>>(
     label_pairs.sort();
     Ok(label_pairs)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        batching::{BatchOpts, BatchedSummary},
+        rolling::{RollingSummary, RollingSummaryOpts},
+        simple::{SimpleSummary, SimpleSummaryOpts},
+    };
+
+    use super::*;
+
+    const MEASUREMENTS: usize = 50_000;
+    const PRINT_EVERY: usize = 100;
+
+    impl<P> GenericSummary<P> {
+        pub fn inner(&self) -> &P {
+            &self.provider
+        }
+
+        pub fn inner_mut(&mut self) -> &mut P {
+            &mut self.provider
+        }
+    }
+
+    fn measure<S: SummaryProvider>(mut summary: GenericSummary<S>) {
+        for i in 0..MEASUREMENTS {
+            let start = std::time::Instant::now();
+            summary.inner_mut().observe(i as f64);
+            if i % 100 == 0 {
+                println!("Time taken: {:?}", start.elapsed());
+            }
+        }
+
+        let result = summary.inner().snapshot();
+        assert_eq!(
+            result.sample_count(),
+            MEASUREMENTS as u64,
+            "Should have all measurements present in the collection"
+        );
+    }
+
+    fn measure_concurrent<S: ConcurrentSummaryProvider>(summary: GenericSummary<S>) {
+        for i in 0..MEASUREMENTS {
+            let start = std::time::Instant::now();
+            summary.inner().concurrent_observe(i as f64);
+            if i % PRINT_EVERY == 0 {
+                println!("Time taken: {:?}", start.elapsed());
+            }
+        }
+
+        let result = summary.inner().snapshot();
+        assert_eq!(
+            result.sample_count(),
+            MEASUREMENTS as u64,
+            "Should have all measurements present in the collection"
+        );
+    }
+
+    #[test]
+    fn with_simple_summary() {
+        let opts = SimpleSummaryOpts::default();
+        let opts =
+            SummaryOpts::new("test_summary", "simple", opts).quantiles(DEFAULT_QUANTILES.to_vec());
+        let summary = GenericSummary::<SimpleSummary>::new::<&str>(&opts, &[]).unwrap();
+
+        measure(summary);
+    }
+
+    #[test]
+    fn with_batched_simple_summary() {
+        let opts = SimpleSummaryOpts::default();
+        let opts = BatchOpts::from_inner(opts);
+        let opts = SummaryOpts::new("test_summary", "batched_simple", opts)
+            .quantiles(DEFAULT_QUANTILES.to_vec());
+        let summary =
+            GenericSummary::<BatchedSummary<SimpleSummary>>::new::<&str>(&opts, &[]).unwrap();
+
+        measure_concurrent(summary);
+    }
+
+    #[test]
+    fn with_rolling_summary() {
+        let opts = RollingSummaryOpts::default().with_quantiles(DEFAULT_QUANTILES);
+        let opts =
+            SummaryOpts::new("test_summary", "rolling", opts).quantiles(DEFAULT_QUANTILES.to_vec());
+        let summary = GenericSummary::<RollingSummary>::new::<&str>(&opts, &[]).unwrap();
+
+        measure(summary);
+    }
+
+    #[test]
+    fn with_batched_rolling_summary() {
+        let opts = RollingSummaryOpts::default().with_quantiles(DEFAULT_QUANTILES);
+        let opts = BatchOpts::from_inner(opts);
+        let opts = SummaryOpts::new("test_summary", "batched_rolling", opts)
+            .quantiles(DEFAULT_QUANTILES.to_vec());
+        let summary =
+            GenericSummary::<BatchedSummary<RollingSummary>>::new::<&str>(&opts, &[]).unwrap();
+
+        measure_concurrent(summary);
+    }
+}
