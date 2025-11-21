@@ -38,11 +38,11 @@ type Batch<T> = orx_concurrent_vec::ConcurrentVec<
     >,
 >;
 
-/// Wraps over the given [`NonConcurrentSummaryProvider`] `P` to batch measurements according to configured batch
-/// size
+/// Wraps over the given [`NonConcurrentSummaryProvider`] `P` to batch measurements according to
+/// configured batch size
 ///
-/// This is useful to transform a [`NonConcurrentSummaryProvider`] into a [`SummaryProvider`], with a
-/// simple batching logic for improved lock accesses
+/// This is useful to transform a [`NonConcurrentSummaryProvider`] into a [`SummaryProvider`], with
+/// a simple batching logic for improved lock accesses
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
     // We use ArcCell to allow more measurements to be recorded while the batch is being committed

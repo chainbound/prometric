@@ -134,7 +134,7 @@ impl<P> Deref for GenericSummaryMetric<P> {
     type Target = GenericSummary<P>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
