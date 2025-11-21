@@ -100,6 +100,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::traits::Summary as _;
 
     use super::*;
@@ -107,10 +109,12 @@ mod tests {
     const MEASUREMENTS: usize = 50_000;
     const PRINT_EVERY: usize = 100;
 
-    fn measure<S>(summary: Summary<S>)
-    where
-        S: SummaryProvider<Summary = <S as NonConcurrentSummaryProvider>::Summary> + SummaryMetric,
-    {
+    #[test]
+    fn smoke() {
+        let registry = prometheus::default_registry();
+        let summary =
+            Summary::new(registry, "smoke", "Smoke test summary", &[], Default::default(), None);
+
         for i in 0..MEASUREMENTS {
             let start = std::time::Instant::now();
             summary.observe(&[], i as f64);
@@ -128,11 +132,36 @@ mod tests {
     }
 
     #[test]
-    fn smoke() {
+    fn concurrent_smoke() {
         let registry = prometheus::default_registry();
         let summary =
-            Summary::new(&registry, "smoke", "Smoke test summary", &[], Default::default(), None);
+            Summary::new(registry, "smoke", "Smoke test summary", &[], Default::default(), None);
+        let summary = Arc::new(summary);
 
-        measure(summary)
+        let tasks = 8;
+
+        let mut handles = Vec::with_capacity(tasks);
+        for _ in 0..tasks {
+            let summary = summary.clone();
+
+            let task = std::thread::spawn(move || {
+                for i in 0..MEASUREMENTS {
+                    let start = std::time::Instant::now();
+                    summary.observe(&[], i as f64);
+                    if i % PRINT_EVERY == 0 {
+                        println!("Time taken: {:?}", start.elapsed());
+                    }
+                }
+            });
+            handles.push(task);
+        }
+        handles.into_iter().for_each(|h| h.join().unwrap());
+
+        let result = summary.snapshot(&[]);
+        assert_eq!(
+            result.sample_count(),
+            (MEASUREMENTS * tasks) as u64,
+            "Should have all measurements present in the collection"
+        );
     }
 }
