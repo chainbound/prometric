@@ -27,9 +27,6 @@ pub mod summary;
 #[cfg(feature = "summary")]
 pub use summary::*;
 
-#[cfg(feature = "summary")]
-pub(crate) mod arc_swap_cell;
-
 /// Sealed trait to prevent outside code from implementing the metric types.
 mod private {
     pub trait Sealed {}

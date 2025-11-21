@@ -22,7 +22,7 @@ tokio = { version = "1.40.0", optional = true, features = ["net", "rt"] }
 sysinfo = { version = "0.37.2", optional = true }
 
 # Summary
-arc-swap = { version = "1.7.1", optional = true }
+arc-cell = {version = "0.3.3", optional = true }
 metrics-util = { version = "0.20.0", optional = true }
 metrics-exporter-prometheus = { version = "0.17.2", optional = true }
 orx-concurrent-vec = { version = "3.10.0", optional = true }
@@ -36,7 +36,7 @@ exporter = ["dep:hyper", "dep:hyper-util", "dep:tokio"]
 # Expose process metrics collection functionality with the `sysinfo` crate.
 process = ["dep:sysinfo"]
 # Expose a Summary functionality. Enabled by default
-summary = ["dep:metrics-util", "dep:metrics-exporter-prometheus", "dep:parking_lot", "dep:quanta", "dep:orx-concurrent-vec", "dep:arc-swap"]
+summary = ["dep:metrics-util", "dep:metrics-exporter-prometheus", "dep:parking_lot", "dep:quanta", "dep:orx-concurrent-vec", "dep:arc-cell"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

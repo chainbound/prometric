@@ -1,11 +1,11 @@
 //! Summary with concurrent measurements (via batching)
 
+use std::sync::Arc;
+
+use arc_cell::ArcCell;
 use parking_lot::RwLock;
 
-use crate::{
-    arc_swap_cell::ArcCell,
-    summary::traits::{ConcurrentSummaryProvider, SummaryProvider},
-};
+use crate::summary::traits::{ConcurrentSummaryProvider, SummaryProvider};
 
 pub const DEFAULT_BATCH_SIZE: usize = 64;
 
@@ -65,7 +65,7 @@ impl<P: Clone> Clone for BatchedSummary<P> {
 }
 
 impl<P: SummaryProvider> BatchedSummary<P> {
-    fn new_batch(batch_size: usize) -> Batch<f64> {
+    fn new_batch(batch_size: usize) -> Arc<Batch<f64>> {
         // We will always have at most `batch_size` measurements before committing, so let's
         // preallocate enough capacity
 
@@ -77,7 +77,21 @@ impl<P: SummaryProvider> BatchedSummary<P> {
         let mut batch = Batch::new();
         batch.reserve_maximum_capacity(batch_size);
 
-        batch
+        Arc::new(batch)
+    }
+
+    /// Wait for the given Arc to have a single owner and obtain the inner value
+    pub(crate) fn wait_for_arc<T>(mut arc: Arc<T>) -> T {
+        loop {
+            match Arc::try_unwrap(arc) {
+                Ok(inner) => return inner,
+                Err(this) => {
+                    arc = this;
+                }
+            }
+
+            std::hint::spin_loop();
+        }
     }
 
     /// Commits the current measurements batch to the underlying summary
@@ -87,7 +101,8 @@ impl<P: SummaryProvider> BatchedSummary<P> {
         // If [`FixedBatch`] had something like `.take()` the [`ArcCell`] would be unnecessary
         // NOTE: we take the previous batch so new measurements can be added without changing
         // the set that we are currently committing
-        let measurements = self.measurements.swap(Self::new_batch(self.batch_size));
+        let measurements = self.measurements.set(Self::new_batch(self.batch_size));
+        let measurements = Self::wait_for_arc(measurements);
 
         let mut inner = self.inner.write();
 
@@ -131,7 +146,7 @@ impl<P: SummaryProvider> SummaryProvider for BatchedSummary<P> {
 
 impl<P: SummaryProvider> ConcurrentSummaryProvider for BatchedSummary<P> {
     fn concurrent_observe(&self, val: f64) {
-        let measurements = self.measurements.load();
+        let measurements = self.measurements.get();
         measurements.push(val);
 
         if measurements.len() >= self.batch_size {
