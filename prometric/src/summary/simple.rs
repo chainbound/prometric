@@ -7,6 +7,9 @@ use metrics_util::storage::Summary as Inner;
 use crate::summary::traits::{NonConcurrentSummaryProvider, Summary};
 
 /// A simple Summary metric implementation
+///
+/// This Summary uses [`Inner`] for the underlying computation, which stores the measurements and
+/// provides arbitrary quantiles over the observed measurements
 #[derive(Debug, Clone)]
 pub struct SimpleSummary {
     pub(crate) inner: Inner,

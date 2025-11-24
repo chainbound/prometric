@@ -8,14 +8,51 @@ use metrics_util::Quantile;
 use quanta::Instant;
 
 use crate::summary::{
-    DEFAULT_QUANTILES, simple::SimpleSummary, traits::NonConcurrentSummaryProvider,
+    DEFAULT_QUANTILES,
+    simple::SimpleSummary,
+    traits::{NonConcurrentSummaryProvider, Summary},
 };
 
 // from metrics_exporter_prometheus::Distribution
 pub const DEFAULT_SUMMARY_BUCKET_DURATION: Duration = Duration::from_secs(20);
 pub const DEFAULT_SUMMARY_BUCKET_COUNT: NonZeroU32 = NonZeroU32::new(3).unwrap();
 
+/// A Rolling summary implementation, backed by [`metrics_exporter_prometheus::Distribution`]
+///
+/// This is a summry which includes a "rolling" algorithm, to exclude measurements past the
+/// configured `duration` (in [`RollingSummaryOpts`]). As the RollingSummary stores measurements in
+/// buckets, the measurement expiry is on a per-bucket basis, meaning that old values might still be
+/// used if the bucket they belong in hasn't expired yet.
+///
+/// Quantiles are computed using [`SimpleSummary`], which will contain the non-expired measurements
 pub type RollingSummary = metrics_exporter_prometheus::Distribution;
+
+/// A [`crate::summary::traits::Summary`] snapshot implementation for [`RollingSummary`]
+///
+/// Will return the total count and total sum, but use the resulting [`SimpleSummary`] from
+/// [`RollingSummary`] for the quantile computation, which only uses non-expired values
+///
+/// # References
+/// [`RollingSummary`] is usually rendered with the total sum and count, but using the active values for quantile computation,
+/// as seen in [`metrics_exporter_prometheus`](https://github.com/metrics-rs/metrics/blob/main/metrics-exporter-prometheus/src/recorder.rs#L183).
+pub struct RollingSummarySnapshot {
+    count: usize,
+    inner: SimpleSummary,
+}
+
+impl Summary for RollingSummarySnapshot {
+    fn sample_sum(&self) -> f64 {
+        self.inner.sample_sum()
+    }
+
+    fn sample_count(&self) -> u64 {
+        self.count as u64
+    }
+
+    fn quantile(&self, val: f64) -> Option<f64> {
+        self.inner.quantile(val)
+    }
+}
 
 /// Configuration for the Summary
 ///
@@ -48,7 +85,7 @@ impl Default for RollingSummaryOpts {
 
 impl NonConcurrentSummaryProvider for RollingSummary {
     type Opts = RollingSummaryOpts;
-    type Summary = SimpleSummary;
+    type Summary = RollingSummarySnapshot;
 
     fn new_provider(opts: &Self::Opts) -> Self {
         let distribution = metrics_exporter_prometheus::DistributionBuilder::new(
@@ -74,16 +111,14 @@ impl NonConcurrentSummaryProvider for RollingSummary {
         self.record_samples(&[(sample, now)]);
     }
 
-    fn snapshot(&self) -> SimpleSummary {
+    fn snapshot(&self) -> RollingSummarySnapshot {
         match self {
             RollingSummary::Summary(summary, _, sum) => {
-                let summary = summary.snapshot(Instant::now());
+                let count = summary.count();
+                let snapshot = summary.snapshot(Instant::now());
+                let inner = SimpleSummary { inner: snapshot, sum: *sum };
 
-                // NOTE: Technically this is the _total_ sum, not the rolling one
-                // but metrics_util doesn't otherwise expose it at all
-                // We could reproduce a rolling sum but then we would basically
-                // reimplement the entire rolling summary
-                SimpleSummary { inner: summary, sum: *sum }
+                RollingSummarySnapshot { inner, count }
             }
             _ => unreachable!("Distribution forced to be a Summary"),
         }

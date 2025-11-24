@@ -25,6 +25,20 @@ pub(super) struct MetricsAttr {
     _static: bool,
 }
 
+/// A wrapper over [`prometric`] metric types, containing their type path and generic
+/// arguments, if any.
+///
+/// ```ignore
+/// # use syn::parse_str;
+///
+/// let counter_ty =
+///     MetricType::from_path(parse_str("::prometric::Counter<u64>").unwrap()).unwrap();
+/// assert!(matches!(counter_ty, MetricType::Counter("::prometric::Counter", u64)));
+///
+/// let guauge_ty =
+///     MetricType::from_path(parse_str("Gauge").unwrap()).unwrap();
+/// assert!(matches!(gauge_ty, MetricType::Gauge("Gauge", ::prometric::GaugeDefault)));
+/// ```
 enum MetricType {
     Counter(TypePath, Type),
     Gauge(TypePath, Type),
@@ -44,58 +58,69 @@ impl std::fmt::Display for MetricType {
 }
 
 impl MetricType {
-    /// Parse the metric type (and generic argument) from a path segment.
-    fn from_path(mut path: TypePath) -> Result<Self> {
-        let last_segment = path.path.segments.last_mut().unwrap();
-        let ident = last_segment.ident.clone();
-
-        // Parse the potential generic argument.
-        let maybe_generic = match &last_segment.arguments {
-            PathArguments::None => None,
+    /// Extract the generic argument (if specified) from the given PathArguments.
+    ///
+    /// Will return error if the path arguments are of the [`PathArgumnets::Parenthesized`] kind,
+    /// or if there's more than 1 argument, or if the argument is not a type argument
+    fn generic_argument(args: &PathArguments) -> Result<Option<Type>> {
+        match &args {
+            PathArguments::None => Ok(None),
             PathArguments::AngleBracketed(generic) => {
                 if generic.args.len() != 1 {
                     return Err(syn::Error::new_spanned(
-                        last_segment,
+                        generic,
                         "Expected a single generic argument",
                     ));
                 }
 
                 let arg = &generic.args[0];
                 if let GenericArgument::Type(ty) = arg {
-                    Some(ty.clone())
+                    Ok(Some(ty.clone()))
                 } else {
-                    return Err(syn::Error::new_spanned(arg, "Expected a type argument"));
+                    Err(syn::Error::new_spanned(arg, "Expected a type argument"))
                 }
             }
             PathArguments::Parenthesized(_) => {
-                return Err(syn::Error::new_spanned(
-                    last_segment,
-                    "Expected a generic type argument",
-                ));
+                Err(syn::Error::new_spanned(args, "Expected a generic type argument"))
             }
-        };
+        }
+    }
+
+    /// Parse the metric type (and generic argument) from a path segment.
+    fn from_path(mut path: TypePath) -> Result<Self> {
+        let last_segment = path.path.segments.last_mut().unwrap();
+        let ident = last_segment.ident.clone();
+
+        let maybe_generic = Self::generic_argument(&last_segment.arguments)?;
 
         // Specifically override the generic argument of `dest`
         // This effectively replaces the same type extracted in the `maybe_generic` block
-        // NOTE: Used in the match block below to enforce consistentcy with the default generic
-        // parameter
         let override_generic_arg = |ty, dest: &mut PathArguments| {
             let args = syn::parse_quote! {<#ty>};
             *dest = PathArguments::AngleBracketed(args);
         };
 
+        // Here we convert the parsed metric type (by identifier) into a variant of this enum.
+        // Additionally, we encode the generic argument as part of the stored qualified type path,
+        // using the prometric type alias if the default generic argument was used, for consistency.
+        //
+        // For example: `prometric::Counter` is parsed the same as
+        // `prometric::Counter<::prometric::CounterDefault>` and will result in a
+        // `MetricType::Counte` with `prometric::Counter<::prometric::CounterDefault>` for the path,
+        // and `::prometric::CounterDefault` for the generic argument
         match ident.to_string().as_str() {
             "Counter" => {
                 let generic =
                     maybe_generic.unwrap_or(syn::parse_str("::prometric::CounterDefault").unwrap());
+                // Ensure the stored `path` has the generic argument
                 override_generic_arg(generic.clone(), &mut last_segment.arguments);
 
                 Ok(Self::Counter(path, generic))
             }
             "Gauge" => {
-                // NOTE: Use the prometric type alias here so it remains consistent.
                 let generic =
                     maybe_generic.unwrap_or(syn::parse_str("::prometric::GaugeDefault").unwrap());
+                // Ensure the stored `path` has the generic argument
                 override_generic_arg(generic.clone(), &mut last_segment.arguments);
 
                 Ok(Self::Gauge(path, generic))
@@ -111,10 +136,10 @@ impl MetricType {
 
     fn full_type(&self) -> &TypePath {
         match self {
-            Self::Counter(path, _) |
-            Self::Gauge(path, _) |
-            Self::Histogram(path) |
-            Self::Summary(path) => path,
+            Self::Counter(path, _)
+            | Self::Gauge(path, _)
+            | Self::Histogram(path)
+            | Self::Summary(path) => path,
         }
     }
 
@@ -149,6 +174,15 @@ impl MetricType {
     }
 }
 
+/// Represents which partition for a given metric type was parsed
+///
+/// This is realistically only useful for Histogram (`Buckets`) and Summaries (`Quantiles`).
+///
+/// This enum also encodes if no partitioning was specified (`None`), or if one was specified but
+/// the metric type doesn't make use of it (ie: Gauge, Counter) (as `NotApplicable`).
+///
+/// Currently there's no difference between `None` and `NotApplicable`, but the latter might become
+/// a hard error in the future, like when specifing `bucket` with a Counter metric.
 enum Partitions {
     /// No partitions specified
     None,
