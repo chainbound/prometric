@@ -136,10 +136,10 @@ impl MetricType {
 
     fn full_type(&self) -> &TypePath {
         match self {
-            Self::Counter(path, _)
-            | Self::Gauge(path, _)
-            | Self::Histogram(path)
-            | Self::Summary(path) => path,
+            Self::Counter(path, _) |
+            Self::Gauge(path, _) |
+            Self::Histogram(path) |
+            Self::Summary(path) => path,
         }
     }
 

@@ -33,8 +33,8 @@ pub type RollingSummary = metrics_exporter_prometheus::Distribution;
 /// [`RollingSummary`] for the quantile computation, which only uses non-expired values
 ///
 /// # References
-/// [`RollingSummary`] is usually rendered with the total sum and count, but using the active values for quantile computation,
-/// as seen in [`metrics_exporter_prometheus`](https://github.com/metrics-rs/metrics/blob/main/metrics-exporter-prometheus/src/recorder.rs#L183).
+/// [`RollingSummary`] is usually rendered with the total sum and count, but using the active values
+/// for quantile computation, as seen in [`metrics_exporter_prometheus`](https://github.com/metrics-rs/metrics/blob/main/metrics-exporter-prometheus/src/recorder.rs#L183).
 pub struct RollingSummarySnapshot {
     count: usize,
     inner: SimpleSummary,
