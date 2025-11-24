@@ -90,7 +90,7 @@ where
     S: SummaryProvider<Summary = <S as NonConcurrentSummaryProvider>::Summary> + SummaryMetric,
 {
     pub fn observe(&self, labels: &[&str], value: f64) {
-        SummaryProvider::observe(&**self.inner.with_label_values(labels), value);
+        self.inner.with_label_values(labels).observe(value);
     }
 
     pub fn snapshot(&self, labels: &[&str]) -> <S as NonConcurrentSummaryProvider>::Summary {

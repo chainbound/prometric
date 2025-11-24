@@ -45,10 +45,9 @@ type Batch<T> = orx_concurrent_vec::ConcurrentVec<
 /// a simple batching logic for improved lock accesses
 #[derive(Debug)]
 pub struct BatchedSummary<P> {
+    batch_size: usize,
     // We use ArcCell to allow more measurements to be recorded while the batch is being committed
     measurements: ArcCell<Batch<f64>>,
-    batch_size: usize,
-
     inner: RwLock<P>,
 }
 

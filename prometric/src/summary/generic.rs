@@ -19,7 +19,6 @@ pub const DEFAULT_QUANTILES: &[f64] = &[0.0, 0.5, 0.9, 0.95, 0.99, 0.999, 1.0];
 #[derive(Clone)]
 pub struct SummaryOpts<O> {
     pub common_opts: Opts,
-
     /// Used to initialize the specific [`SummaryProvider`]
     pub summary_opts: O,
 
@@ -67,10 +66,8 @@ impl<O> SummaryOpts<O> {
 #[derive(Debug)]
 pub struct GenericSummary<P> {
     label_pairs: Vec<pp::LabelPair>,
-
-    provider: P,
-
     quantiles: Vec<f64>,
+    provider: P,
 }
 
 impl<P: NonConcurrentSummaryProvider> GenericSummary<P> {
@@ -83,8 +80,8 @@ impl<P: NonConcurrentSummaryProvider> GenericSummary<P> {
 
         Ok(Self {
             label_pairs,
-            provider: P::new_provider(&opts.summary_opts),
             quantiles: opts.quantiles.clone(),
+            provider: P::new_provider(&opts.summary_opts),
         })
     }
 
@@ -122,12 +119,12 @@ impl<P> Deref for GenericSummary<P> {
     }
 }
 
-#[derive(Clone)]
 /// NewType over [`GenericSummaryImpl`]
 ///
 /// Uses `Arc` to ensure clones refer to the same data.
 /// This is becuase [ `prometheus::core::MetricVec` ] will clone the metric each time it is to be
 /// accessed, even when inserting new data
+#[derive(Clone)]
 pub struct GenericSummaryMetric<P>(Arc<GenericSummary<P>>);
 
 impl<P> Deref for GenericSummaryMetric<P> {
