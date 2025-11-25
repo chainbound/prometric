@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Bug Fixes
+- reintroduce basic (smaller) example by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- use appropriate parse_quote macro by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- error with invalid partitions config by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- enforce metric help string by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- pr review by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- clippy by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- commit deadlock by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- account for outstanding loads by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- BatchOpts, unnecessary const-hack by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- clippy by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+### Documentation
+- more comments in prometric-derive by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- ensure generated docs link to items by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- clarify comment by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+### Features
+- GenericSummaryMetric (cheap clone) by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- expand metrics with user path by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- Summary metric support by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- `ArcCell` by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- batching summary by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- summary metric by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+### Refactor
+- move examples under examples/ by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- quote fully qualified imports by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- use existing `arc-cell` by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- split into more modules by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- export 2 more items by @Karrq in
+https://github.com/chainbound/prometric/pull/47
+- split metrics in modules by @Karrq in
+https://github.com/chainbound/prometric/pull/47
 
 ## `v0.1.4`
 ### Bug Fixes
