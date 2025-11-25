@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use prometheus::Encoder as _;
-use prometric::{Counter, Gauge, Histogram};
 
 /// This is a struct that contains the metrics for the application.
 ///
@@ -217,4 +216,63 @@ fn bucket_defaults_work() {
     let output = String::from_utf8(buffer).unwrap();
 
     assert!(output.contains("test_hist"));
+}
+
+#[test]
+fn quantiles_defaults_work() {
+    #[prometric_derive::metrics(scope = "test")]
+    struct QuantileMetrics {
+        /// Test Summary metric with quantile expression.
+        #[metric]
+        summary: prometric::Summary,
+    }
+
+    let registry = prometheus::default_registry();
+    let app_metrics = QuantileMetrics::builder().with_registry(registry).build();
+
+    let duration = Duration::from_secs(1);
+    app_metrics.summary().observe(duration.as_secs_f64());
+
+    let encoder = prometheus::TextEncoder::new();
+    let metric_families = registry.gather(); // Wait, need to expose registry
+
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    let output = String::from_utf8(buffer).unwrap();
+
+    assert!(output.contains("test_summary"));
+}
+
+#[test]
+fn quantiles_with_batching_work() {
+    #[prometric_derive::metrics(scope = "test")]
+    struct QuantileMetrics {
+        /// Test Summary metric with quantile expression.
+        #[metric]
+        summary: prometric::Summary,
+    }
+
+    let registry = prometheus::default_registry();
+    let app_metrics = QuantileMetrics::builder().with_registry(registry).build();
+
+    let duration = Duration::from_secs(1);
+    for i in 0..10000 {
+        let start = std::time::Instant::now();
+        println!("{i} ");
+        app_metrics.summary().observe(duration.as_secs_f64() * i as f64);
+        if i % 100 == 0 {
+            println!("Time taken: {:?}", start.elapsed());
+        }
+    }
+
+    let encoder = prometheus::TextEncoder::new();
+    let metric_families = registry.gather(); // Wait, need to expose registry
+
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    let output = String::from_utf8(buffer).unwrap();
+
+    println!("{}", output);
+
+    assert!(output.contains("test_summary"));
 }
