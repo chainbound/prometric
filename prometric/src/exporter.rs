@@ -7,9 +7,6 @@ use hyper::{
 use hyper_util::rt::TokioIo;
 use prometheus::{Encoder, TextEncoder};
 
-#[cfg(feature = "process")]
-use crate::process::ProcessCollector;
-
 /// A builder for the Prometheus HTTP exporter.
 pub struct ExporterBuilder {
     registry: Option<prometheus::Registry>,
@@ -195,11 +192,11 @@ async fn serve_req(
 /// If the "process" feature is enabled AND the poll interval is provided, collect
 /// process metrics at the given interval. Otherwise, no-op.
 ///
-/// NOTE: the return type is Result but there is no way for this function to fail.
+/// NOTE: the return type is Result to use [`tokio::try_join!`] with [`serve`].
 async fn collect_process_metrics(_poll_interval: Option<Duration>) -> Result<(), ExporterError> {
     #[cfg(feature = "process")]
     if let Some(interval) = _poll_interval {
-        let mut collector = ProcessCollector::default();
+        let mut collector = crate::process::ProcessCollector::default();
         loop {
             collector.collect();
             tokio::time::sleep(interval).await;
