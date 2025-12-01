@@ -272,7 +272,7 @@ fn quantiles_with_batching_work() {
     encoder.encode(&metric_families, &mut buffer).unwrap();
     let output = String::from_utf8(buffer).unwrap();
 
-    println!("{}", output);
+    println!("{output}");
 
     assert!(output.contains("test_summary"));
 }
