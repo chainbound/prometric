@@ -30,7 +30,6 @@ type UintCounter = GenericGauge<AtomicU64>;
 pub struct ProcessCollector {
     specifics: RefreshKind,
     sys: System,
-    pid: Pid,
     cores: u64,
 
     metrics: ProcessMetrics,
@@ -45,8 +44,6 @@ impl Default for ProcessCollector {
 impl ProcessCollector {
     /// Create a new `ProcessCollector` with the given registry.
     pub fn new(registry: &Registry) -> Self {
-        let pid = Pid::from_u32(std::process::id());
-
         // Create the stats that will be refreshed
         let specifics = RefreshKind::nothing()
             .with_cpu(CpuRefreshKind::everything())
@@ -67,12 +64,12 @@ impl ProcessCollector {
         let cores = sys.cpus().len() as u64;
         let metrics = ProcessMetrics::new(registry);
 
-        Self { specifics, sys, pid, cores, metrics }
+        Self { specifics, sys, cores, metrics }
     }
 
-    /// The PID of the process being monitored.
+    /// Get the PID of the current process.
     pub fn pid(&self) -> u32 {
-        self.pid.as_u32()
+        Pid::from_u32(std::process::id()).as_u32()
     }
 
     /// Collect system and process metrics.
@@ -87,7 +84,7 @@ impl ProcessCollector {
         let system_memory_usage =
             self.sys.used_memory() as f64 / self.sys.total_memory() as f64 * 100.0;
 
-        let process = self.sys.process(self.pid).unwrap();
+        let process = self.sys.process(Pid::from_u32(self.pid())).unwrap();
         let cpu_usage = process.cpu_usage() / self.cores as f32;
 
         // Collect thread stats
