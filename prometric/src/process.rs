@@ -84,7 +84,10 @@ impl ProcessCollector {
         let system_memory_usage =
             self.sys.used_memory() as f64 / self.sys.total_memory() as f64 * 100.0;
 
-        let process = self.sys.process(Pid::from_u32(self.pid())).unwrap();
+        let Some(process) = self.sys.process(Pid::from_u32(self.pid())) else {
+            return;
+        };
+
         let cpu_usage = process.cpu_usage() / self.cores as f32;
 
         // Collect thread stats
