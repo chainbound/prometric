@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+### Features
+- option to export process metrics at an interval by @merklefruit in
+https://github.com/chainbound/prometric/pull/52
+### Bug Fixes
 - reintroduce basic (smaller) example by @Karrq in
 https://github.com/chainbound/prometric/pull/47
 - use appropriate parse_quote macro by @Karrq in
