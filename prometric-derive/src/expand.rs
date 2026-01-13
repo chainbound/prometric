@@ -364,7 +364,8 @@ impl MetricBuilder {
                 if let Some(buckets_expr) = self.partitions.buckets() {
                     doc_builder.push_str(&format!("\n* Buckets: {}", quote! { #buckets_expr }));
                 } else {
-                    doc_builder.push_str("\n* Buckets: [`::prometheus::DEFAULT_BUCKETS`]");
+                    doc_builder
+                        .push_str("\n* Buckets: [`::prometric::prometheus::DEFAULT_BUCKETS`]");
                 }
             }
             MetricType::Summary(_) => {
@@ -581,13 +582,13 @@ pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<Token
 
     let mut output = quote! {
         #vis struct #builder_name<'a> {
-            registry: &'a ::prometheus::Registry,
+            registry: &'a ::prometric::prometheus::Registry,
             labels: ::std::collections::HashMap<String, String>,
         }
 
         impl<'a> #builder_name<'a> {
             /// Set the registry to use for the metrics.
-            #vis fn with_registry(mut self, registry: &'a prometheus::Registry) -> Self {
+            #vis fn with_registry(mut self, registry: &'a ::prometric::prometheus::Registry) -> Self {
                 self.registry = registry;
                 self
             }
