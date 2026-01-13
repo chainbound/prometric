@@ -27,6 +27,9 @@ pub mod summary;
 #[cfg(feature = "summary")]
 pub use summary::*;
 
+#[doc(hidden)]
+pub use prometheus;
+
 /// Sealed trait to prevent outside code from implementing the metric types.
 mod private {
     pub trait Sealed {}
