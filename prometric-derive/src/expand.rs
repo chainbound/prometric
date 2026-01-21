@@ -655,7 +655,7 @@ pub fn expand(metrics_attr: MetricsAttr, input: &mut ItemStruct) -> Result<Token
             /// It will be initialized with the default registry and no labels.
             #builder_vis fn builder<'a>() -> #builder_name<'a> {
                 #builder_name {
-                    registry: ::prometheus::default_registry(),
+                    registry: ::prometric::prometheus::default_registry(),
                     labels: ::std::collections::HashMap::new(),
                 }
             }
