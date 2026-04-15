@@ -92,26 +92,17 @@ impl ProcessCollector {
 
         // Collect thread stats, aggregated by thread name to avoid high-cardinality
         // per-thread/task IDs.
+        self.metrics.thread_usage.reset();
         if let Some(tasks) = process.tasks() {
-            let mut thread_usage_by_name = std::collections::BTreeMap::<String, f64>::new();
-
             tasks.iter().for_each(|pid| {
                 let Some(thread) = self.sys.process(*pid) else {
                     return;
                 };
 
-                let name = thread
-                    .name()
-                    .to_str()
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or("unnamed")
-                    .to_owned();
+                let name =
+                    thread.name().to_str().filter(|name| !name.is_empty()).unwrap_or("unnamed");
 
-                *thread_usage_by_name.entry(name).or_default() += thread.cpu_usage() as f64;
-            });
-
-            thread_usage_by_name.into_iter().for_each(|(name, cpu_usage)| {
-                self.metrics.thread_usage.with_label_values(&[name.as_str()]).set(cpu_usage);
+                self.metrics.thread_usage.with_label_values(&[name]).add(thread.cpu_usage() as f64);
             });
         }
 
