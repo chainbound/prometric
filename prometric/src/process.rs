@@ -90,20 +90,42 @@ impl ProcessCollector {
 
         let cpu_usage = process.cpu_usage() / self.cores as f32;
 
-        // Collect thread stats, aggregated by thread name to avoid high-cardinality
-        // per-thread/task IDs.
+        // Collect thread stats by thread name to avoid high-cardinality per-thread/task
+        // IDs. For duplicate names, append a deterministic instance suffix based on PID
+        // order (for example `worker#1`, `worker#2`).
         self.metrics.thread_usage.reset();
         if let Some(tasks) = process.tasks() {
-            tasks.iter().for_each(|pid| {
-                let Some(thread) = self.sys.process(*pid) else {
-                    return;
-                };
+            let mut threads: Vec<_> = tasks
+                .iter()
+                .filter_map(|pid| self.sys.process(*pid).map(|thread| (*pid, thread)))
+                .collect();
+            threads.sort_unstable_by_key(|(pid, _)| pid.as_u32());
 
+            let mut name_counts =
+                std::collections::HashMap::<&str, usize>::with_capacity(threads.len());
+            for (_, thread) in &threads {
                 let name =
                     thread.name().to_str().filter(|name| !name.is_empty()).unwrap_or("unnamed");
+                *name_counts.entry(name).or_default() += 1;
+            }
 
-                self.metrics.thread_usage.with_label_values(&[name]).add(thread.cpu_usage() as f64);
-            });
+            let mut instance_counts =
+                std::collections::HashMap::<&str, usize>::with_capacity(name_counts.len());
+            for (_, thread) in threads {
+                let name =
+                    thread.name().to_str().filter(|name| !name.is_empty()).unwrap_or("unnamed");
+                let cpu_usage = thread.cpu_usage() as f64;
+
+                if name_counts.get(name).copied().unwrap_or(0) > 1 {
+                    let instance = instance_counts.entry(name).or_default();
+                    *instance += 1;
+
+                    let label = format!("{name}#{instance}");
+                    self.metrics.thread_usage.with_label_values(&[label.as_str()]).set(cpu_usage);
+                } else {
+                    self.metrics.thread_usage.with_label_values(&[name]).set(cpu_usage);
+                }
+            }
         }
 
         let threads = process.tasks().map(|tasks| tasks.len()).unwrap_or(0);
@@ -234,7 +256,7 @@ impl ProcessMetrics {
         let thread_usage: GaugeVec = GaugeVec::new(
             Opts::new(
                 "process_thread_usage",
-                "Thread CPU usage percentage aggregated by thread name (Linux only).",
+                "Thread CPU usage percentage by thread name, with `#<n>` appended for duplicate names (Linux only).",
             ),
             &["name"],
         )

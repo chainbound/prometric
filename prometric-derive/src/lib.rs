@@ -188,7 +188,7 @@ mod utils;
 /// # HELP process_start_time_seconds The start time of the process in UNIX seconds.
 /// # TYPE process_start_time_seconds gauge
 /// process_start_time_seconds 1763056609
-/// # HELP process_thread_usage Thread CPU usage percentage aggregated by thread name (Linux only).
+/// # HELP process_thread_usage Thread CPU usage percentage by thread name, with `#<n>` appended for duplicate names (Linux only).
 /// # TYPE process_thread_usage gauge
 /// process_thread_usage{name="process::tests:"} 0.9259260296821594
 /// process_thread_usage{name="test-thread-1"} 0
