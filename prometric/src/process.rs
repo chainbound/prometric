@@ -90,7 +90,9 @@ impl ProcessCollector {
 
         let cpu_usage = process.cpu_usage() / self.cores as f32;
 
-        // Collect thread stats
+        // Collect thread stats and reset the vector each scrape so exited threads do not
+        // leave stale PID-labelled series behind.
+        self.metrics.thread_usage.reset();
         if let Some(tasks) = process.tasks() {
             tasks.iter().for_each(|pid| {
                 let Some(thread) = self.sys.process(*pid) else {
