@@ -90,20 +90,28 @@ impl ProcessCollector {
 
         let cpu_usage = process.cpu_usage() / self.cores as f32;
 
-        // Collect thread stats
+        // Collect thread stats, aggregated by thread name to avoid high-cardinality
+        // per-thread/task IDs.
         if let Some(tasks) = process.tasks() {
+            let mut thread_usage_by_name = std::collections::BTreeMap::<String, f64>::new();
+
             tasks.iter().for_each(|pid| {
                 let Some(thread) = self.sys.process(*pid) else {
                     return;
                 };
 
-                let pid = pid.to_string();
-                let name = thread.name().to_str().unwrap_or(pid.as_str());
+                let name = thread
+                    .name()
+                    .to_str()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or("unnamed")
+                    .to_owned();
 
-                self.metrics
-                    .thread_usage
-                    .with_label_values(&[pid.as_str(), name])
-                    .set(thread.cpu_usage() as f64);
+                *thread_usage_by_name.entry(name).or_default() += thread.cpu_usage() as f64;
+            });
+
+            thread_usage_by_name.into_iter().for_each(|(name, cpu_usage)| {
+                self.metrics.thread_usage.with_label_values(&[name.as_str()]).set(cpu_usage);
             });
         }
 
@@ -235,9 +243,9 @@ impl ProcessMetrics {
         let thread_usage: GaugeVec = GaugeVec::new(
             Opts::new(
                 "process_thread_usage",
-                "Per-thread CPU usage as a percentage of the process's CPU usage (Linux only).",
+                "Thread CPU usage percentage aggregated by thread name (Linux only).",
             ),
-            &["pid", "name"],
+            &["name"],
         )
         .unwrap();
 
