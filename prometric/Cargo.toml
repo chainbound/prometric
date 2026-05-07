@@ -39,3 +39,9 @@ process = ["dep:sysinfo"]
 summary = ["dep:metrics-util", "dep:metrics-exporter-prometheus", "dep:parking_lot", "dep:quanta", "dep:orx-concurrent-vec", "dep:arc-cell"]
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "process_collector"
+harness = false
+required-features = ["process"]
