@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - forgot one instance by @Karrq in
 https://github.com/chainbound/prometric/pull/61
 ### Bug Fixes
+- forgot one instance by @Karrq in
+https://github.com/chainbound/prometric/pull/61
+### Bug Fixes
 ### Features
 - option to export process metrics at an interval by @merklefruit in
 https://github.com/chainbound/prometric/pull/52
