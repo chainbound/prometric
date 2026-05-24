@@ -46,7 +46,7 @@ impl ProcessCollector {
     pub fn new(registry: &Registry) -> Self {
         // Create the stats that will be refreshed
         let specifics = RefreshKind::nothing()
-            .with_cpu(CpuRefreshKind::everything())
+            .with_cpu(CpuRefreshKind::nothing().with_cpu_usage())
             .with_memory(MemoryRefreshKind::nothing().with_ram())
             .with_processes(
                 ProcessRefreshKind::nothing()
